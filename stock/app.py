@@ -3,7 +3,8 @@ import atexit
 
 from flask import Flask
 import redis
-
+import uuid
+import json
 
 app = Flask("stock-service")
 
@@ -20,21 +21,43 @@ def close_db_connection():
 atexit.register(close_db_connection)
 
 
+class Item:
+    def __init__(self, item_id, price, stock):
+        self.item_id = item_id
+        self.price = price
+        self.stock = stock
+
+
 @app.post('/item/create/<price>')
 def create_item(price: int):
-    pass
+    idx = str(uuid.uuid4())
+    db.set(idx, json.dumps(Item(price, 0).__dict__))
+    return {"item_id": idx}
 
 
 @app.get('/find/<item_id>')
 def find_item(item_id: str):
-    pass
+    if db.exists(item_id):
+        return json.loads(db.get(item_id))
+    else:
+        return "Item not found", 404
 
 
 @app.post('/add/<item_id>/<amount>')
 def add_stock(item_id: str, amount: int):
-    pass
+    if db.exists(item_id):
+        item = json.loads(db.get(item_id))
+        item.stock = item.stock + amount
+        return db.set(item_id, item)
+    else:
+        return "Item not found", 404
 
 
 @app.post('/subtract/<item_id>/<amount>')
 def remove_stock(item_id: str, amount: int):
-    pass
+    if db.exists(item_id):
+        item = json.loads(db.get(item_id))
+        item.stock = item.stock - amount
+        return db.set(item_id, item)
+    else:
+        return "Item not found", 404
