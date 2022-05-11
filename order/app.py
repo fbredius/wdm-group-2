@@ -49,7 +49,7 @@ def add_item(order_id, item_id):
     if db.exists(item_id):
         order = json.loads(db.get(order_id))
         order.items = order.items.append(item_id)
-        return db.set(order_id, order)
+        return db.set(order_id, json.dumps(order.__dict__))
     else:
         return "Order not found", 404
 
@@ -59,7 +59,7 @@ def remove_item(order_id, item_id):
     if db.exists(item_id):
         order = json.loads(db.get(order_id))
         order.items = order.items.remove(item_id)
-        return db.set(order_id, order)
+        return db.set(order_id, json.dumps(order.__dict__))
     else:
         return "Order not found", 404
 

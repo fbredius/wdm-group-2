@@ -31,12 +31,14 @@ class Item:
 @app.post('/item/create/<price>')
 def create_item(price: int):
     idx = str(uuid.uuid4())
-    db.set(idx, json.dumps(Item(price, 0).__dict__))
+    db.set(idx, json.dumps(Item(idx, price, 0).__dict__))
     return {"item_id": idx}
 
 
 @app.get('/find/<item_id>')
 def find_item(item_id: str):
+    print(item_id)
+    print(db.exists(item_id))
     if db.exists(item_id):
         return json.loads(db.get(item_id))
     else:
@@ -48,7 +50,7 @@ def add_stock(item_id: str, amount: int):
     if db.exists(item_id):
         item = json.loads(db.get(item_id))
         item.stock = item.stock + amount
-        return db.set(item_id, item)
+        return db.set(item_id, json.dumps(item.__dict__))
     else:
         return "Item not found", 404
 
@@ -58,6 +60,6 @@ def remove_stock(item_id: str, amount: int):
     if db.exists(item_id):
         item = json.loads(db.get(item_id))
         item.stock = item.stock - amount
-        return db.set(item_id, item)
+        return db.set(item_id, json.dumps(item.__dict__))
     else:
         return "Item not found", 404
