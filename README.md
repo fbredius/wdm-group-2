@@ -42,6 +42,12 @@ First deploy your database using helm by running the `deploy-charts-minicube.sh`
 but you can find any database you want in https://artifacthub.io/ and adapt the script). Then adapt the k8s configuration files in the
 `\k8s` folder to mach your system and then run `kubectl apply -f .` in the k8s folder. 
 
+Addition Pepijn: Alternatively you can use the scripts in `\utils`. Running `deploy-and-apply-minikube` from `\utils` should
+1. (re)build all services (as defined in `docker-compose.yml`) using the minikube docker-env.
+2. run `deploy-charts-minikube`
+3. run `kubectl apply -f ./k8s/` to run all services.
+Running this script (in git bash) works for me to deploy everything locally.
+
 ***Requirements:*** You need to have minikube (with ingress enabled) and helm installed on your machine.
 
 #### kubernetes cluster (managed k8s cluster in the cloud)
