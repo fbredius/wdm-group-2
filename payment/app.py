@@ -1,7 +1,7 @@
 import os
 import atexit
 
-from flask import Flask
+from flask import Flask, jsonify
 import redis
 import uuid
 import json
@@ -36,6 +36,14 @@ class Payment:
         self.paid = paid
 
 
+def user_from_json(json_str) -> User:
+    return User(**json.loads(json_str))
+
+
+def payment_from_json(json_str) -> Payment:
+    return Payment(**json.loads(json_str))
+
+
 def construct_payment_id(user_id, order_id):
     return user_id + '/' + order_id
 
@@ -50,7 +58,7 @@ def create_user():
 @app.get('/find_user/<user_id>')
 def find_user(user_id: str):
     if db.exists(user_id):
-        return json.loads(db.get(user_id))
+        return db.get(user_id)
     else:
         return "User not found", 404
 
@@ -58,9 +66,9 @@ def find_user(user_id: str):
 @app.post('/add_funds/<user_id>/<amount>')
 def add_credit(user_id: str, amount: int):
     if db.exists(user_id):
-        user = json.loads(db.get(user_id))
-        user.credit = user.credit + amount
-        return db.set(user_id, json.dumps(user.__dict__))
+        user = user_from_json(db.get(user_id))
+        user.credit = user.credit + int(amount)
+        return jsonify({"done": db.set(user_id, json.dumps(user.__dict__))})
     else:
         return "User not found", 404
 
@@ -68,14 +76,16 @@ def add_credit(user_id: str, amount: int):
 @app.post('/pay/<user_id>/<order_id>/<amount>')
 def remove_credit(user_id: str, order_id: str, amount: int):
     if db.exists(user_id):
-        user = json.loads(db.get(user_id))
-        if user.credit < amount:
+        user = user_from_json(db.get(user_id))
+        print(f"{user.__dict__ =}", flush=True)
+        if user.credit < int(amount):
             return "Not enough credit", 403
         else:
-            user.credit = user.credit - amount
+            user.credit = user.credit - int(amount)
             db.set(user_id, json.dumps(user.__dict__))
             idx = construct_payment_id(user_id, order_id)
-            return db.set(idx, json.dumps(Payment(idx, user_id, order_id, amount, True).__dict__))
+            db.set(idx, json.dumps(Payment(idx, user_id, order_id, amount, True).__dict__))
+            return "Credit removed", 200
     else:
         return "User not found", 404
 
@@ -87,10 +97,10 @@ def cancel_payment(user_id: str, order_id: str):
         if db.exists(idx):
             payment = json.loads(db.get(idx))
             payment.paid = False
-            user = json.loads(db.get(user_id))
+            user = user_from_json(db.get(user_id))
             user.credit = user.credit + payment.amount
             db.set(user_id, json.dumps(user.__dict__))
-            return db.set(idx, json.dumps(payment.__dict__))
+            return "payment reset", 200
         else:
             return "Payment not found", 404
     else:
@@ -101,7 +111,7 @@ def cancel_payment(user_id: str, order_id: str):
 def payment_status(user_id: str, order_id: str):
     idx = construct_payment_id(user_id, order_id)
     if db.exists(idx):
-        payment = json.loads(db.get(idx))
+        payment = payment_from_json(db.get(idx))
         return {"paid": payment.paid}
     else:
         return {"paid": False}
