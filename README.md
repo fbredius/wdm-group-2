@@ -52,6 +52,25 @@ Running this script (in git bash) works for me to deploy everything locally.
 
 #### kubernetes cluster (managed k8s cluster in the cloud)
 
-Similarly to the `minikube` deployment but run the `deploy-charts-cluster.sh` in the helm step to also install an ingress to the cluster. 
+- Install google cloud console, open the cloud console
+- authorize the console to your GCP`gcloud
+   - `gcloud auth login`
+   - opens window: login
+- `gcloud config set project versatile-field-350813`
+- `gcloud container clusters get-credentials web-scale-cluster --zone europe-west4-a --project versatile-field-350813`
+- Navigate to project root with cloud shell (`cd C:\User\.....\wdm-group-2`)
+- `echo %USERNAME% && echo %USERDOMAIN%`
+   `net localgroup docker-users <DOMAIN>\<USERNAME> /add`
+- `gcloud auth configure-docker europe-west4-docker.pkg.dev`
+- Pushing a container to the registry is now done by
+  - Tagging the container with tag `europe-west4-docker.pkg.dev/versatile-field-350813/web-scale-repository/<image_name>:<some_optional_tag>`
+    - example: docker tag stock:latest europe-west4-docker.pkg.dev/versatile-field-350813/web-scale-repository/stock:latest
+  - Pushing the container to the registry
+    - `docker push europe-west4-docker.pkg.dev/versatile-field-350813/web-scale-repository/stock:latest`
+  - using docker-compose this can be done by first building (appropriate tags should already be set in the .yml) and then pushing
+    - `docker-compose build`
+    - `docker-compose push`
+    
+Similarly to the `minikube` deployment but run the `deploy-charts-cluster.sh` in the helm step to also install an ingress to the cluster.
 
 ***Requirements:*** You need to have access to kubectl of a k8s cluster.

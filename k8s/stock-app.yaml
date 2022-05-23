@@ -27,8 +27,8 @@ spec:
     spec:
       containers:
         - name: stock
-          image: stock:latest
-          imagePullPolicy: Never
+          image: europe-west4-docker.pkg.dev/versatile-field-350813/web-scale-repository/stock:latest
+          imagePullPolicy: Always
           resources:
             limits:
               memory: "1Gi"

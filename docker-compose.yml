@@ -10,7 +10,7 @@ services:
 
   order-service:
     build: ./order
-    image: order:latest
+    image: europe-west4-docker.pkg.dev/versatile-field-350813/web-scale-repository/order:latest
     environment:
       - GATEWAY_URL=http://gateway:80
     command: gunicorn -b 0.0.0.0:5000 app:app
@@ -23,7 +23,7 @@ services:
 
   stock-service:
     build: ./stock
-    image: stock:latest
+    image: europe-west4-docker.pkg.dev/versatile-field-350813/web-scale-repository/stock:latest
     environment:
       - GATEWAY_URL=http://gateway:80
     command: gunicorn -b 0.0.0.0:5000 app:app
@@ -36,7 +36,7 @@ services:
 
   payment-service:
     build: ./payment
-    image: user:latest
+    image: europe-west4-docker.pkg.dev/versatile-field-350813/web-scale-repository/user:latest
     command: gunicorn -b 0.0.0.0:5000 app:app
     env_file:
       - env/payment_redis.env
