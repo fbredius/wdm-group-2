@@ -71,6 +71,12 @@ Running this script (in git bash) works for me to deploy everything locally.
     - `docker-compose build`
     - `docker-compose push`
     
+NOT TESTED, but you should be able to init a cluster with some nodes to test deploying stuff with:
+```
+gcloud beta container --project "versatile-field-350813" node-pools create "pool-1" --cluster "web-scale-cluster" --zone "europe-west4-a" --node-version "1.21.11-gke.900" --machine-type "e2-standard-4" --image-type "COS_CONTAINERD" --disk-type "pd-standard" --disk-size "100" --metadata disable-legacy-endpoints=true --scopes "https://www.googleapis.com/auth/devstorage.read_only","https://www.googleapis.com/auth/logging.write","https://www.googleapis.com/auth/monitoring","https://www.googleapis.com/auth/servicecontrol","https://www.googleapis.com/auth/service.management.readonly","https://www.googleapis.com/auth/trace.append" --num-nodes "1" --enable-autoupgrade --enable-autorepair --max-surge-upgrade 0 --max-unavailable-upgrade 2 --max-pods-per-node "110"
+```
+(run in console)
+
 Similarly to the `minikube` deployment but run the `deploy-charts-cluster.sh` in the helm step to also install an ingress to the cluster.
 
 ***Requirements:*** You need to have access to kubectl of a k8s cluster.
