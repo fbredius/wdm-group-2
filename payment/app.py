@@ -1,12 +1,15 @@
-import os
 import atexit
-
-from flask import Flask, jsonify
-import redis
-import uuid
 import json
+import logging
+import os
+import uuid
 
-app = Flask("payment-service")
+import redis
+from flask import Flask, jsonify
+
+app_name = 'payment-service'
+app = Flask(app_name)
+logging.getLogger(app_name).setLevel(os.environ.get('LOGLEVEL', 'DEBUG'))
 
 db: redis.Redis = redis.Redis(host=os.environ['REDIS_HOST'],
                               port=int(os.environ['REDIS_PORT']),
@@ -77,21 +80,27 @@ def add_credit(user_id: str, amount: int):
 def remove_credit(user_id: str, order_id: str, amount: int):
     if db.exists(user_id):
         user = user_from_json(db.get(user_id))
-        print(f"{user.__dict__ =}", flush=True)
+        app.logger.debug(f"removing credit from user: {user.__dict__ =}")
         if user.credit < int(amount):
-            return "Not enough credit", 403
+            app.logger.debug(f"{user.credit = } is smaller than {amount =} of credit to remove")
+            msg, status_code = "Not enough credit", 403
         else:
             user.credit = user.credit - int(amount)
             db.set(user_id, json.dumps(user.__dict__))
             idx = construct_payment_id(user_id, order_id)
             db.set(idx, json.dumps(Payment(idx, user_id, order_id, amount, True).__dict__))
-            return "Credit removed", 200
+            app.logger.debug(f"succesfully removed {amount} credit from user with id {user_id}")
+            msg, status_code = "Credit removed", 200
     else:
-        return "User not found", 404
+        msg, status_code = "User not found", 404
+
+    app.logger.debug(f"Remove credit result, {msg = }, {status_code = }")
+    return msg, status_code
 
 
 @app.post('/cancel/<user_id>/<order_id>')
 def cancel_payment(user_id: str, order_id: str):
+    msg, status_code = "User not found", 404
     if db.exists(user_id):
         idx = construct_payment_id(user_id, order_id)
         if db.exists(idx):
@@ -100,18 +109,21 @@ def cancel_payment(user_id: str, order_id: str):
             user = user_from_json(db.get(user_id))
             user.credit = user.credit + payment.amount
             db.set(user_id, json.dumps(user.__dict__))
-            return "payment reset", 200
+            msg, status_code = "payment reset", 200
         else:
-            return "Payment not found", 404
-    else:
-        return "User not found", 404
+            msg, status_code = "Payment not found", 404
+
+    app.logger.debug(f"Cancel payment result, {msg = }, {status_code = }")
+    return msg, status_code
 
 
 @app.post('/status/<user_id>/<order_id>')
 def payment_status(user_id: str, order_id: str):
+    paid = False
     idx = construct_payment_id(user_id, order_id)
     if db.exists(idx):
         payment = payment_from_json(db.get(idx))
-        return {"paid": payment.paid}
-    else:
-        return {"paid": False}
+        paid = payment.paid
+
+    app.logger.debug(f"Order with order id: {order_id} ({user_id = }, paid status: {paid}")
+    return {"paid": paid}

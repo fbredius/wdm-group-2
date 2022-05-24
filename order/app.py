@@ -1,17 +1,19 @@
+import atexit
+import json
 import logging
 import os
-import atexit
+import uuid
 
+import redis
 import requests
 from flask import Flask
-import redis
-import uuid
-import json
 
-gateway_url = os.environ['GATEWAY_URL']
+app_name = 'order-service'
+app = Flask(app_name)
+logging.getLogger(app_name).setLevel(os.environ.get('LOGLEVEL', 'DEBUG'))
 
-app = Flask("order-service")
-
+stock_url = f'http://{os.environ["STOCK_SERVICE_URL"]}'
+user_url = f'http://{os.environ["USER_SERVICE_URL"]}'
 db: redis.Redis = redis.Redis(host=os.environ['REDIS_HOST'],
                               port=int(os.environ['REDIS_PORT']),
                               password=os.environ['REDIS_PASSWORD'],
@@ -93,11 +95,11 @@ def find_order(order_id):
 
 @app.post('/checkout/<order_id>')
 def checkout(order_id):
-    print(f"Checking out order {order_id}", flush=True)
+    app.logger.debug(f"Checking out order {order_id}")
     if db.exists(order_id):
         order = order_from_json(db.get(order_id))
         if order.paid:
-            print(f"order already paid", flush=True)
+            app.logger.debug(f"order already paid")
             return "Order already paid", 200
 
         # Send all items to stock service
@@ -108,21 +110,20 @@ def checkout(order_id):
         # if paid remove stock
         # if paid return success
 
-
         # Get prices of all items in order
-        stock_response = requests.post(f"{gateway_url}/stock/checkout", json={
+        app.logger.debug(f"sending request to stock-service at {stock_url}")
+        stock_response = requests.post(f"{stock_url}/checkout", json={
             "order": order.__dict__
         })
 
         # TODO handle all cases except the positive one
         if not (200 <= stock_response.status_code < 300):
-            print(f"stock response code not success", flush=True)
+            app.logger.debug(f"stock response code not success, {stock_response.text}")
             return stock_response.text, 400
         else:
             order.paid = True
             db.set(order_id, json.dumps(order.__dict__))
-        print(f"order successful", flush=True)
+        app.logger.debug(f"order successful")
         return "Order successful", 200
     else:
         return "Order not found", 404
-

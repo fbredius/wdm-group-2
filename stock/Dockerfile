@@ -5,6 +5,7 @@ WORKDIR /home/flask-app
 COPY ./requirements.txt .
 
 RUN pip install -r requirements.txt
+RUN apt-get -y update; apt-get -y install curl
 
 COPY . .
 

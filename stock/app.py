@@ -1,23 +1,24 @@
+import atexit
+import json
 import logging
 import os
-import atexit
+import uuid
 
+import redis
+import requests
 from flask import Flask
 from flask import request
-import redis
-import uuid
-import json
-import requests
 
-app = Flask("stock-service")
+app_name = 'stock-service'
+app = Flask(app_name)
+logging.getLogger(app_name).setLevel(os.environ.get('LOGLEVEL', 'DEBUG'))
 
-gateway_url = os.environ['GATEWAY_URL']
-logging.getLogger('stock-service').setLevel(os.environ.get('LOGLEVEL', 'DEBUG'))
-
+payment_url = f"http://{os.environ['PAYMENT_SERVICE_URL']}"
 db: redis.Redis = redis.Redis(host=os.environ['REDIS_HOST'],
                               port=int(os.environ['REDIS_PORT']),
                               password=os.environ['REDIS_PASSWORD'],
                               db=int(os.environ['REDIS_DB']))
+
 
 # TODO remove this duplicated code, fix with actual imports
 class Order:
@@ -114,7 +115,7 @@ def checkout_items():
 
     # pay
     app.logger.debug(f"requesting payment for {total_price}")
-    payment_response = requests.post(f"{gateway_url}/payment/pay/{order.user_id}/{order.order_id}/{total_price}")
+    payment_response = requests.post(f"{payment_url}/pay/{order.user_id}/{order.order_id}/{total_price}")
     if not (200 <= payment_response.status_code < 300):
         app.logger.debug(f"payment response code not success, {payment_response.text}")
         return payment_response.text, 400

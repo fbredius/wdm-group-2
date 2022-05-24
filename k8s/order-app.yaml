@@ -41,10 +41,12 @@ spec:
           ports:
             - containerPort: 5000
           env:
+            - name: GATEWAY_URL
+              value: "nginx-ingress-nginx-controller"
             - name: USER_SERVICE_URL
-              value: "user-service"
+              value: "user-service:5000"
             - name: STOCK_SERVICE_URL
-              value: "stock-service"
+              value: "stock-service:5000"
             - name: REDIS_HOST
               value: redis-master
             - name: REDIS_PORT
