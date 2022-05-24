@@ -44,3 +44,9 @@ services:
   payment-db:
     image: redis:latest
     command: redis-server --requirepass redis --maxmemory 512mb
+
+  rabbitmq:
+    image: 'rabbitmq:3.10-management'
+    ports:
+      - '5672:5672'
+      - '15672:15672'
