@@ -1,3 +1,5 @@
+import asyncio
+import time
 import unittest
 
 import utils as tu
@@ -140,6 +142,24 @@ class TestMicroservices(unittest.TestCase):
 
         credit: int = tu.find_user(user_id)['credit']
         self.assertEqual(credit, 5)
+
+    def test_dumb_latency_test(self):
+        start = time.time()
+        n = 500
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(async_reqs(n))
+        took = time.time() - start
+        print(f"{n} requests took {took :.2f} seconds, that is {took / 1000 :.3f} ms on average")
+
+        print(tu.find_user("a0e66bf0-2339-496c-8527-5f7a029d7d4f"))
+
+
+async def async_reqs(n):
+    import asyncio
+    loop = asyncio.get_event_loop()
+    for _ in range(n):
+        fut = loop.run_in_executor(None, tu.add_credit_to_user, "a0e66bf0-2339-496c-8527-5f7a029d7d4f", 10)
+    await fut
 
 
 if __name__ == '__main__':
