@@ -52,24 +52,42 @@ Running this script (in git bash) works for me to deploy everything locally.
 
 #### kubernetes cluster (managed k8s cluster in the cloud)
 
-- Install google cloud console, open the cloud console
-- authorize the console to your GCP`gcloud
+> Installation
+1. Install the gcloud CLI from [here](https://cloud.google.com/sdk/docs/install).
+___
+2. Open a terminal and run `gcloud init`.
+___
+3. Authorize the console to your GCP`gcloud
    - `gcloud auth login`
    - opens window: login
-- `gcloud config set project versatile-field-350813`
-- `gcloud container clusters get-credentials web-scale-cluster --zone europe-west4-a --project versatile-field-350813`
-- Navigate to project root with cloud shell (`cd C:\User\.....\wdm-group-2`)
-- `echo %USERNAME% && echo %USERDOMAIN%`
-   `net localgroup docker-users <DOMAIN>\<USERNAME> /add`
-- `gcloud auth configure-docker europe-west4-docker.pkg.dev`
-- Pushing a container to the registry is now done by
-  - Tagging the container with tag `europe-west4-docker.pkg.dev/versatile-field-350813/web-scale-repository/<image_name>:<some_optional_tag>`
-    - example: docker tag stock:latest europe-west4-docker.pkg.dev/versatile-field-350813/web-scale-repository/stock:latest
-  - Pushing the container to the registry
-    - `docker push europe-west4-docker.pkg.dev/versatile-field-350813/web-scale-repository/stock:latest`
-  - using docker-compose this can be done by first building (appropriate tags should already be set in the .yml) and then pushing
-    - `docker-compose build`
-    - `docker-compose push`
+___
+4. Run `gcloud config set project versatile-field-350813` in your terminal. This sets our WDM project on Google Cloud for your current configuration of the CLI.
+___
+5. Run `gcloud container clusters get-credentials web-scale-cluster --zone europe-west4-a --project versatile-field-350813` in your terminal.
+This updates **kubeconfig** to get **kubectl** to use a GKE cluster.
+___
+6. Navigate to the project root with cloud shell (`cd C:\User\.....\wdm-group-2`)
+___
+7. `echo %USERNAME% && echo %USERDOMAIN%` (No idea what this does)
+___
+8. The Docker security group is called docker-users. To add a user from the Administrator command prompt, run the following command:
+`net localgroup docker-users <DOMAIN>\<USERNAME> /add`.
+    - Where *DOMAIN* is your Windows domain.
+    - *USERNAME* is your user name.
+    - On Linux, run: `sudo usermod -a -G docker ${USER}`
+___
+9. Run `gcloud auth configure-docker europe-west4-docker.pkg.dev`. This will register `gcloud` as the credential helper for all Google-supported Docker registries. See [here](https://cloud.google.com/sdk/gcloud/reference/auth/configure-docker) for more info.
+___
+> Updating the existing cluster
+10. How to push a container to the registry:
+
+    1. Tag the container `europe-west4-docker.pkg.dev/versatile-field-350813/web-scale-repository/<image_name>:<some_optional_tag>`
+       - Example: `docker tag stock:latest europe-west4-docker.pkg.dev/versatile-field-350813/web-scale-repository/stock:latest`
+    2. Push the container `docker push europe-west4-docker.pkg.dev/versatile-field-350813/web-scale-repository/<image_name>:<some_optional_tag>`
+       - Example: `docker push europe-west4-docker.pkg.dev/versatile-field-350813/web-scale-repository/stock:latest`
+    3. Or by using `docker-compose`. This can be done by first building (appropriate tags should already be set in the .yml) and then pushing
+       - `docker-compose build`
+       - `docker-compose push`
     
 NOT TESTED, but you should be able to init a cluster with some nodes to test deploying stuff with:
 
