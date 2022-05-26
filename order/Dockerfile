@@ -4,6 +4,7 @@ WORKDIR /home/flask-app
 
 COPY ./requirements.txt .
 
+RUN apt-get install psycopg2 libpq-dev python-dev
 RUN pip install -r requirements.txt
 RUN apt-get -y update; apt-get -y install curl
 
