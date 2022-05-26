@@ -43,6 +43,18 @@ spec:
           env:
             - name: GATEWAY_URL
               value: "nginx-ingress-nginx-controller"
+            - name: POSTGRES_PASSWORD
+              value: 'postgres'
+            - name: POSTGRES_USER
+              value: 'postgres'
+            - name: POSTGRES_DB_NAME
+              value: 'user_db'
+            - name: POSTGRES_TABLE_NAME
+              value: "users"
+            - name: POSTGRES_HOST
+              value: "user-postgres-service"
+            - name: POSTGRES_REPLICA_HOST
+              value: "user-postgres-service-replica"
             - name: REDIS_HOST
               value: redis-master
             - name: REDIS_PORT
@@ -51,3 +63,4 @@ spec:
               value: "redis"
             - name: REDIS_DB
               value: "0"
+

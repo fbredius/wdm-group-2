@@ -45,6 +45,18 @@ spec:
               value: "nginx-ingress-nginx-controller"
             - name: PAYMENT_SERVICE_URL
               value: "user-service:5000"
+            - name: POSTGRES_PASSWORD
+              value: 'postgres'
+            - name: POSTGRES_USER
+              value: 'postgres'
+            - name: POSTGRES_DB_NAME
+              value: 'stock_db'
+            - name: POSTGRES_TABLE_NAME
+              value: "stock"
+            - name: POSTGRES_HOST
+              value: "stock-postgres-service"
+            - name: POSTGRES_REPLICA_HOST
+              value: "stock-postgres-service-replica"
             - name: REDIS_HOST
               value: redis-master
             - name: REDIS_PORT

@@ -102,9 +102,22 @@ ingress to the cluster.
 
 ***Requirements:*** You need to have access to kubectl of a k8s cluster.
 
-## Kubernetes commands storage:
+## Kubernetes useful commands:
 
 - Deploy changes made to code: <br>
   `docker-compose build && docker-compose push && kubectl replace --force -f ./k8s/`
 - Resizing cluster (can take a while) <br>
   `gcloud container clusters resize web-scale-cluster --region europe-west4-a --num-nodes <num_nodes> `
+- Listing pods or Persistent Volume Claims<br>
+  `kubectl get pods`<br>
+  `kubectl get pvc`
+    - Flags:
+        - `-o wide` more verbose output
+        - `-w` watch output (keep updating)
+- Deleting resources<br>
+  `kubectl delete (--force-true) <resource type (pod|pvc|...)> <full resource (pod/pvc) name>`
+    - Or, to delete all resources defined in a yaml file: <br>
+      `kubectl delete -f k8s/<filename>`
+    - Or, just use the Cloud console UI
+    - Delete everything that has to do with stock-postgres <br>
+      `kubectl delete -f k8s/stock-postgres.yaml && kubectl delete pvc -l app=stock-postgres-service`

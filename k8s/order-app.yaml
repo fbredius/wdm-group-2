@@ -47,6 +47,18 @@ spec:
               value: "user-service:5000"
             - name: STOCK_SERVICE_URL
               value: "stock-service:5000"
+            - name: POSTGRES_PASSWORD
+              value: 'postgres'
+            - name: POSTGRES_USER
+              value: 'postgres'
+            - name: POSTGRES_DB_NAME
+              value: 'order_db'
+            - name: POSTGRES_TABLE_NAME
+              value: "orders"
+            - name: POSTGRES_HOST
+              value: "order-postgres-service"
+            - name: POSTGRES_REPLICA_HOST
+              value: "order-postgres-service-replica"
             - name: REDIS_HOST
               value: redis-master
             - name: REDIS_PORT
