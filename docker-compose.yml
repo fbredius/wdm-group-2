@@ -16,10 +16,12 @@ services:
     command: gunicorn -b 0.0.0.0:5000 app:app
     env_file:
       - env/order_redis.env
+      - env/order_postgres.env
 
-  order-db:
-    image: redis:latest
-    command: redis-server --requirepass redis --maxmemory 512mb
+  order-postgres-service:
+    image: postgres:14.1-alpine
+    env_file:
+      - env/order_postgres.env
 
   stock-service:
     build: ./stock
@@ -29,10 +31,12 @@ services:
     command: gunicorn -b 0.0.0.0:5000 app:app
     env_file:
       - env/stock_redis.env
+      - env/stock_postgres.env
 
-  stock-db:
-    image: redis:latest
-    command: redis-server --requirepass redis --maxmemory 512mb
+  stock-postgres-service:
+    image: postgres:14.1-alpine
+    env_file:
+      - env/stock_postgres.env
 
   payment-service:
     build: ./payment
@@ -40,7 +44,9 @@ services:
     command: gunicorn -b 0.0.0.0:5000 app:app
     env_file:
       - env/payment_redis.env
+      - env/payment_postgres.env
 
-  payment-db:
-    image: redis:latest
-    command: redis-server --requirepass redis --maxmemory 512mb
+  payment-postgres-service:
+    image: postgres:14.1-alpine
+    env_file:
+      - env/payment_postgres.env
