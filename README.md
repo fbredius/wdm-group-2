@@ -121,3 +121,15 @@ ingress to the cluster.
     - Or, just use the Cloud console UI
     - Delete everything that has to do with stock-postgres <br>
       `kubectl delete -f k8s/stock-postgres.yaml && kubectl delete pvc -l app=stock-postgres-service`
+
+## Known issues
+
+1. Postgres replicas fail to start and ask for passwords in the logs. (logs fully filled with 'password:')
+   <br>Solution:
+    1. Go to https://console.cloud.google.com/kubernetes/config?project=versatile-field-350813
+    2. Click on 'base-kubegres-config'
+    3. Click on 'Edit'
+    4. add a line `PGPASSWORD=postgres` to the `copy_primary_data_to_replica.sh` script (starts at line 24) after the
+       first `echo` line
+    5. Save
+    6. replace the instances
