@@ -2,12 +2,14 @@ import logging
 import os
 import atexit
 
+import pika
 from flask import Flask
 from flask import request
 import redis
 import uuid
 import json
 import requests
+from producer import publish
 
 app = Flask("stock-service")
 
@@ -18,6 +20,31 @@ db: redis.Redis = redis.Redis(host=os.environ['REDIS_HOST'],
                               port=int(os.environ['REDIS_PORT']),
                               password=os.environ['REDIS_PASSWORD'],
                               db=int(os.environ['REDIS_DB']))
+
+
+# When a message is received, this function is called
+def callback(ch, method, properties, body):
+    print(" [x] Received order %r" % body.decode())
+    print(" [x] Done")
+    ch.basic_ack(delivery_tag=method.delivery_tag)
+    publish(body)
+
+
+params = pika.URLParameters('amqps://sskbplbr:33XzmeNedhO9KVfmaxsHZfiVquNzl6DO@whale.rmq.cloudamqp.com/sskbplbr')
+connection = pika.BlockingConnection(params)
+channel = connection.channel()
+
+# Declare the queue
+channel.queue_declare(queue='checkout', durable=True)
+
+# Prevents dispatching new message to a worker that has not processed and acknowledged the previous one yet
+channel.basic_qos(prefetch_count=1)
+channel.basic_consume(queue='checkout', on_message_callback=callback)
+
+# Start waiting for messages
+print("Waiting for messages")
+channel.start_consuming()
+
 
 # TODO remove this duplicated code, fix with actual imports
 class Order:
@@ -42,6 +69,7 @@ def close_db_connection():
 
 
 atexit.register(close_db_connection)
+atexit.register(connection.close())
 
 
 class Item:
@@ -126,3 +154,4 @@ def checkout_items():
     db.mset(updated_items)
 
     return "paid and stock subtracted", 200
+
