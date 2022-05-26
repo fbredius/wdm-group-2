@@ -9,10 +9,10 @@ app_name = 'payment-service'
 app = Flask(app_name)
 logging.getLogger(app_name).setLevel(os.environ.get('LOGLEVEL', 'DEBUG'))
 
-DB_URL = 'postgresql+psycopg2://{user}:{pw}@{url}/{db}'\
+DB_URL = 'postgresql+psycopg2://{user}:{pw}@{host}/{db}' \
     .format(user=os.environ['POSTGRES_USER'],
             pw=os.environ['POSTGRES_PASSWORD'],
-            url=os.environ['POSTGRES_URL'],
+            host=os.environ['POSTGRES_HOST'],
             db=os.environ['POSTGRES_DB'])
 
 app.config['SQLALCHEMY_DATABASE_URI'] = DB_URL
@@ -31,6 +31,11 @@ class User(db.Model):
         self.id = id
         self.credit = credit
 
+    def as_dict(self):
+        dct: dict = self.__dict__.copy()
+        dct.pop('_sa_instance_state', None)
+        return dct
+
 
 class Payment(db.Model):
     __tablename__ = 'payments'
@@ -48,6 +53,19 @@ class Payment(db.Model):
         self.amount = amount
         self.paid = paid
 
+    def as_dict(self):
+        dct = self.__dict__.copy()
+        dct.pop('_sa_instance_state', None)
+        return dct
+
+
+if os.environ.get('DOCKER_COMPOSE_RUN') == "True":
+    app.logger.info("Clearing all tables as we're running in DOCKER COMPOSE")
+    db.drop_all()
+
+db.create_all()
+db.session.commit()
+
 
 def construct_payment_id(user_id, order_id):
     return user_id + '/' + order_id
@@ -64,28 +82,32 @@ def create_user():
 
 @app.get('/find_user/<user_id>')
 def find_user(user_id: str):
-    return User.query.get_or_404(user_id)
+    return User.query.get_or_404(user_id).as_dict()
 
 
 @app.post('/add_funds/<user_id>/<amount>')
 def add_credit(user_id: str, amount: int):
     user = User.query.filter_by(id=user_id).first()
+    done = False
     if bool(user):
         user.credit = user.credit + int(amount)
-        return {"done": True}
-    else:
-        return {"done": False}
+        db.session.add(user)
+        db.session.commit()
+        done = True
+
+    return {"done": done}
 
 
 @app.post('/pay/<user_id>/<order_id>/<amount>')
-def remove_credit(user_id: str, order_id: str, amount: int):
+def remove_credit(user_id: str, order_id: str, amount: float):
     user = User.query.get_or_404(user_id)
     app.logger.debug(f"removing credit from user: {user.__dict__ =}")
-    if user.credit < int(amount):
+    amount = float(amount)
+    if user.credit < amount:
         app.logger.debug(f"{user.credit = } is smaller than {amount =} of credit to remove")
         msg, status_code = "Not enough credit", 403
     else:
-        user.credit = user.credit - int(amount)
+        user.credit = user.credit - amount
         db.session.add(user)
         idx = construct_payment_id(user_id, order_id)
         payment = Payment(idx, user_id, order_id, amount, True)

@@ -3,10 +3,9 @@ import os
 import uuid
 
 import requests
-from flask import request
 from flask import Flask
+from flask import request
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import or_
 from sqlalchemy.dialects.postgresql import JSON
 
 app_name = 'stock-service'
@@ -15,10 +14,10 @@ logging.getLogger(app_name).setLevel(os.environ.get('LOGLEVEL', 'DEBUG'))
 
 payment_url = f"http://{os.environ['PAYMENT_SERVICE_URL']}"
 
-DB_URL = 'postgresql+psycopg2://{user}:{pw}@{url}/{db}' \
+DB_URL = 'postgresql+psycopg2://{user}:{pw}@{host}/{db}' \
     .format(user=os.environ['POSTGRES_USER'],
             pw=os.environ['POSTGRES_PASSWORD'],
-            url=os.environ['POSTGRES_URL'],
+            host=os.environ['POSTGRES_HOST'],
             db=os.environ['POSTGRES_DB'])
 
 app.config['SQLALCHEMY_DATABASE_URI'] = DB_URL
@@ -46,11 +45,16 @@ class Order(db.Model):
     def __repr__(self):
         return '<id {}>'.format(self.id)
 
+    def as_dict(self):
+        dct = self.__dict__.copy()
+        dct.pop('_sa_instance_state', None)
+        return dct
+
 
 class Item(db.Model):
     __tablename__ = 'items'
 
-    id = db.Column(db.String(), primary_key=True)
+    id = db.Column(db.String, primary_key=True)
     price = db.Column(db.Float, unique=False, nullable=False)
     stock = db.Column(db.Integer, unique=False, nullable=False)
 
@@ -61,6 +65,19 @@ class Item(db.Model):
 
     def __repr__(self):
         return '<id {}>'.format(self.id)
+
+    def as_dict(self):
+        dct = self.__dict__.copy()
+        dct.pop('_sa_instance_state', None)
+        return dct
+
+
+if os.environ.get('DOCKER_COMPOSE_RUN') == "True":
+    app.logger.info("Clearing all tables as we're running in DOCKER COMPOSE")
+    db.drop_all()
+
+db.create_all()
+db.session.commit()
 
 
 @app.post('/item/create/<price>')
@@ -74,9 +91,8 @@ def create_item(price: int):
 
 @app.get('/find/<item_id>')
 def find_item(item_id: str):
-    app.logger.debug(item_id)
-    app.logger.debug(db.exists(item_id))
-    return Item.query.get_or_404(item_id)
+    app.logger.debug(f"Finding: {item_id=}")
+    return Item.query.get_or_404(item_id).as_dict()
 
 
 @app.post('/add/<item_id>/<amount>')
@@ -112,24 +128,24 @@ def checkout_items():
 
     # Subtracts stock of all items by 1 and sums prices
 
-    filter_list = [Item.id.__contains__(x) for x in item_ids]
+    # filter_list = [Item.id == x for x in item_ids]
 
     items = db.session.query(Item).filter(
-        or_(
-            *filter_list
-        )
+        Item.id.in_(item_ids)
     )
     app.logger.debug(f"items= {items}")
 
     total_price = 0
+    item: Item
     for item in items:
         item.stock -= 1
         db.session.add(item)
         total_price += item.price
 
     # pay
-    app.logger.debug(f"requesting payment for {total_price}")
-    payment_response = requests.post(f"{payment_url}/pay/{request.json['order']['user_id']}/{request.json['order']['order_id']}/{total_price}")
+    payment_request_url = f"{payment_url}/pay/{request.json['order']['user_id']}/{request.json['order']['id']}/{total_price} "
+    app.logger.debug(f"requesting payment for {total_price} to {payment_request_url}")
+    payment_response = requests.post(payment_request_url)
     if not (200 <= payment_response.status_code < 300):
         app.logger.debug(f"payment response code not success, {payment_response.text}")
         return payment_response.text, 400

@@ -4,8 +4,8 @@ WORKDIR /home/flask-app
 
 COPY ./requirements.txt .
 
-RUN python -m pip install --upgrade pip
 RUN apt-get update && apt-get -y install libpq-dev gcc curl
+RUN python -m pip install --upgrade pip
 RUN pip install -r requirements.txt
 
 COPY . .

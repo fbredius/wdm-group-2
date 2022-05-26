@@ -43,27 +43,17 @@ spec:
           env:
             - name: GATEWAY_URL
               value: "nginx-ingress-nginx-controller"
-            - name: USER_SERVICE_URL
-              value: "user-service:5000"
+            - name: PAYMENT_SERVICE_URL
+              value: "payment-service:5000"
             - name: STOCK_SERVICE_URL
               value: "stock-service:5000"
             - name: POSTGRES_PASSWORD
               value: 'postgres'
             - name: POSTGRES_USER
               value: 'postgres'
-            - name: POSTGRES_DB_NAME
+            - name: POSTGRES_DB
               value: 'order_db'
-            - name: POSTGRES_TABLE_NAME
-              value: "orders"
             - name: POSTGRES_HOST
               value: "order-postgres-service"
             - name: POSTGRES_REPLICA_HOST
               value: "order-postgres-service-replica"
-            - name: REDIS_HOST
-              value: redis-master
-            - name: REDIS_PORT
-              value: '6379'
-            - name: REDIS_PASSWORD
-              value: "redis"
-            - name: REDIS_DB
-              value: "0"

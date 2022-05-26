@@ -134,8 +134,8 @@ class TestMicroservices(unittest.TestCase):
         stock: int = tu.find_item(item_id1)['stock']
         self.assertEqual(stock, 15)
 
-        checkout_response = tu.checkout_order(order_id).status_code
-        self.assertTrue(tu.status_code_is_success(checkout_response))
+        checkout_response = tu.checkout_order(order_id)
+        self.assertTrue(tu.status_code_is_success(checkout_response.status_code))
 
         stock_after_subtract: int = tu.find_item(item_id1)['stock']
         self.assertEqual(stock_after_subtract, 14)
@@ -147,18 +147,19 @@ class TestMicroservices(unittest.TestCase):
         start = time.time()
         n = 500
         loop = asyncio.get_event_loop()
-        loop.run_until_complete(async_reqs(n))
+        user_id = tu.create_user()['user_id']
+        loop.run_until_complete(async_reqs(n, user_id))
         took = time.time() - start
         print(f"{n} requests took {took :.2f} seconds, that is {took / 1000 :.3f} ms on average")
 
-        print(tu.find_user("a0e66bf0-2339-496c-8527-5f7a029d7d4f"))
+        print(tu.find_user(user_id))
 
 
-async def async_reqs(n):
+async def async_reqs(n, user_id):
     import asyncio
     loop = asyncio.get_event_loop()
     for _ in range(n):
-        fut = loop.run_in_executor(None, tu.add_credit_to_user, "a0e66bf0-2339-496c-8527-5f7a029d7d4f", 10)
+        fut = loop.run_in_executor(None, tu.add_credit_to_user, user_id, 10)
     await fut
 
 

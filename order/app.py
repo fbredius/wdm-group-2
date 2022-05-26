@@ -1,4 +1,4 @@
-import json
+import logging
 import logging
 import os
 import uuid
@@ -6,19 +6,21 @@ import uuid
 import requests
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy.dialects.postgresql import JSON
+from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.orm.attributes import flag_modified
+from sqlalchemy.types import String, Float, Boolean
 
 app_name = 'order-service'
 app = Flask(app_name)
 logging.getLogger(app_name).setLevel(os.environ.get('LOGLEVEL', 'DEBUG'))
 
 stock_url = f'http://{os.environ["STOCK_SERVICE_URL"]}'
-user_url = f'http://{os.environ["USER_SERVICE_URL"]}'
+payment_url = f'http://{os.environ["PAYMENT_SERVICE_URL"]}'
 
-DB_URL = 'postgresql+psycopg2://{user}:{pw}@{url}/{db}'\
+DB_URL = 'postgresql+psycopg2://{user}:{pw}@{host}/{db}' \
     .format(user=os.environ['POSTGRES_USER'],
             pw=os.environ['POSTGRES_PASSWORD'],
-            url=os.environ['POSTGRES_URL'],
+            host=os.environ['POSTGRES_HOST'],
             db=os.environ['POSTGRES_DB'])
 
 app.config['SQLALCHEMY_DATABASE_URI'] = DB_URL
@@ -30,11 +32,11 @@ db = SQLAlchemy(app)
 class Order(db.Model):
     __tablename__ = 'orders'
 
-    id = db.Column(db.String(), primary_key=True)
-    paid = db.Column(db.Boolean, unique=False, nullable=False)
-    user_id = db.Column(db.String(), unique=False, nullable=False)
-    items = db.Column(JSON, unique=False, nullable=True)
-    total_cost = db.Column(db.Float, unique=False, nullable=False)
+    id = db.Column(String, primary_key=True)
+    paid = db.Column(Boolean, unique=False, nullable=False)
+    user_id = db.Column(String, unique=False, nullable=False)
+    items = db.Column(ARRAY(String, dimensions=1), unique=False, nullable=True)
+    total_cost = db.Column(Float, unique=False, nullable=False)
 
     def __init__(self, id, paid, items, user_id, total_cost):
         self.id = id
@@ -46,9 +48,18 @@ class Order(db.Model):
     def __repr__(self):
         return '<id {}>'.format(self.id)
 
+    def as_dict(self):
+        dct: dict = self.__dict__.copy()
+        dct.pop('_sa_instance_state', None)
+        return dct
 
-def order_from_json(json_str) -> Order:
-    return Order(**json.loads(json_str))
+
+if os.environ.get('DOCKER_COMPOSE_RUN') == "True":
+    app.logger.info("Clearing all tables as we're running in DOCKER COMPOSE")
+    db.drop_all()
+
+db.create_all()
+db.session.commit()
 
 
 @app.post('/create/<user_id>')
@@ -69,10 +80,15 @@ def remove_order(order_id):
 
 @app.post('/addItem/<order_id>/<item_id>')
 def add_item(order_id, item_id):
+    app.logger.debug(f"Adding item to {order_id = }, {item_id =}")
     order = Order.query.get_or_404(order_id)
+    app.logger.debug(f"before {order.items = }")
     order.items.append(item_id)
-    db.session.add(order)
+    flag_modified(order, "items")
+    db.session.merge(order)
+    db.session.flush()
     db.session.commit()
+    app.logger.debug(f"Added item to {order_id = }, {item_id =}, {order.items = }")
     return "Item added to order", 200
 
 
@@ -87,13 +103,14 @@ def remove_item(order_id, item_id):
 
 @app.get('/find/<order_id>')
 def find_order(order_id):
-    return Order.query.get_or_404(order_id)
+    return Order.query.get_or_404(order_id).as_dict()
 
 
 @app.post('/checkout/<order_id>')
 def checkout(order_id):
     app.logger.debug(f"Checking out order {order_id}")
-    order = Order.query.get_or_404(order_id)
+    order: Order = Order.query.get_or_404(order_id)
+    app.logger.debug(f"Found order in checkout: {order.as_dict()}")
     if order.paid:
         app.logger.debug(f"order already paid")
         return "Order already paid", 200
@@ -107,9 +124,9 @@ def checkout(order_id):
     # if paid return success
 
     # Get prices of all items in order
-    app.logger.debug(f"sending request to stock-service at {stock_url}")
+    app.logger.debug(f"sending request to stock-service at {stock_url} with order: {order.as_dict()}")
     stock_response = requests.post(f"{stock_url}/checkout", json={
-        "order": order.__dict__
+        "order": order.as_dict()
     })
 
     # TODO handle all cases except the positive one

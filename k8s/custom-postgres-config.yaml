@@ -27,10 +27,4 @@ data:
     GRANT ALL PRIVILEGES ON DATABASE "$customDatabaseName" to $customUserName;
     EOSQL
 
-    echo "$dt - Running: CREATE TABLE query: $CREATE_TABLE_QUERY";
-
-    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$customDatabaseName" <<-EOSQL
-        $CREATE_TABLE_QUERY
-    EOSQL
-
     echo "$dt - Init script is completed";

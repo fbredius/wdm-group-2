@@ -1,8 +1,11 @@
-version: "3"
 services:
 
   gateway:
     image: nginx:latest
+    depends_on:
+      - order-service
+      - payment-service
+      - stock-service
     volumes:
       - ./gateway_nginx.conf:/etc/nginx/nginx.conf:ro
     ports:
@@ -13,6 +16,9 @@ services:
     image: europe-west4-docker.pkg.dev/versatile-field-350813/web-scale-repository/order:latest
     environment:
       - GATEWAY_URL=http://gateway:80
+    depends_on:
+      order-postgres-service:
+        condition: service_healthy
     command: gunicorn -b 0.0.0.0:5000 app:app
     env_file:
       - env/order_redis.env
@@ -20,14 +26,24 @@ services:
 
   order-postgres-service:
     image: postgres:14.1-alpine
+    environment:
+      - PGDATA=/tmp/data
     env_file:
       - env/order_postgres.env
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   stock-service:
     build: ./stock
     image: europe-west4-docker.pkg.dev/versatile-field-350813/web-scale-repository/stock:latest
     environment:
       - GATEWAY_URL=http://gateway:80
+    depends_on:
+      stock-postgres-service:
+        condition: service_healthy
     command: gunicorn -b 0.0.0.0:5000 app:app
     env_file:
       - env/stock_redis.env
@@ -37,11 +53,19 @@ services:
     image: postgres:14.1-alpine
     env_file:
       - env/stock_postgres.env
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   payment-service:
     build: ./payment
     image: europe-west4-docker.pkg.dev/versatile-field-350813/web-scale-repository/user:latest
     command: gunicorn -b 0.0.0.0:5000 app:app
+    depends_on:
+      payment-postgres-service:
+        condition: service_healthy
     env_file:
       - env/payment_redis.env
       - env/payment_postgres.env
@@ -50,3 +74,8 @@ services:
     image: postgres:14.1-alpine
     env_file:
       - env/payment_postgres.env
+    healthcheck:
+      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
