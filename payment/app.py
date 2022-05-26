@@ -1,50 +1,52 @@
-import atexit
-import json
 import logging
 import os
 import uuid
 
-import redis
-from flask import Flask, jsonify
+from flask import Flask
+from flask_sqlalchemy import SQLAlchemy
 
 app_name = 'payment-service'
 app = Flask(app_name)
 logging.getLogger(app_name).setLevel(os.environ.get('LOGLEVEL', 'DEBUG'))
 
-db: redis.Redis = redis.Redis(host=os.environ['REDIS_HOST'],
-                              port=int(os.environ['REDIS_PORT']),
-                              password=os.environ['REDIS_PASSWORD'],
-                              db=int(os.environ['REDIS_DB']))
+DB_URL = 'postgresql+psycopg2://{user}:{pw}@{url}/{db}'\
+    .format(user=os.environ['POSTGRES_USER'],
+            pw=os.environ['POSTGRES_PASSWORD'],
+            url=os.environ['POSTGRES_URL'],
+            db=os.environ['POSTGRES_DB'])
+
+app.config['SQLALCHEMY_DATABASE_URI'] = DB_URL
+app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False  # silence the deprecation warning
+
+db = SQLAlchemy(app)
 
 
-def close_db_connection():
-    db.close()
+class User(db.Model):
+    __tablename__ = 'users'
 
+    id = db.Column(db.String(), primary_key=True)
+    credit = db.Column(db.Float, unique=False, nullable=False)
 
-atexit.register(close_db_connection)
-
-
-class User:
-    def __init__(self, user_id, credit):
-        self.user_id = user_id
+    def __init__(self, id, credit):
+        self.id = id
         self.credit = credit
 
 
-class Payment:
-    def __init__(self, payment_id, user_id, order_id, amount, paid):
-        self.payment_id = payment_id
+class Payment(db.Model):
+    __tablename__ = 'payments'
+
+    id = db.Column(db.String(), primary_key=True)
+    user_id = db.Column(db.String(), unique=False, nullable=False)
+    order_id = db.Column(db.String(), unique=False, nullable=False)
+    amount = db.Column(db.Float, unique=False, nullable=False)
+    paid = db.Column(db.Boolean, unique=False, nullable=False)
+
+    def __init__(self, id, user_id, order_id, amount, paid):
+        self.id = id
         self.user_id = user_id
         self.order_id = order_id
         self.amount = amount
         self.paid = paid
-
-
-def user_from_json(json_str) -> User:
-    return User(**json.loads(json_str))
-
-
-def payment_from_json(json_str) -> Payment:
-    return Payment(**json.loads(json_str))
 
 
 def construct_payment_id(user_id, order_id):
@@ -54,45 +56,43 @@ def construct_payment_id(user_id, order_id):
 @app.post('/create_user')
 def create_user():
     idx = str(uuid.uuid4())
-    db.set(idx, json.dumps(User(idx, 0).__dict__))
+    user = User(idx, 0)
+    db.session.add(user)
+    db.session.commit()
     return {"user_id": idx}
 
 
 @app.get('/find_user/<user_id>')
 def find_user(user_id: str):
-    if db.exists(user_id):
-        return db.get(user_id)
-    else:
-        return "User not found", 404
+    return User.query.get_or_404(user_id)
 
 
 @app.post('/add_funds/<user_id>/<amount>')
 def add_credit(user_id: str, amount: int):
-    if db.exists(user_id):
-        user = user_from_json(db.get(user_id))
+    user = User.query.filter_by(id=user_id).first()
+    if bool(user):
         user.credit = user.credit + int(amount)
-        return jsonify({"done": db.set(user_id, json.dumps(user.__dict__))})
+        return {"done": True}
     else:
-        return "User not found", 404
+        return {"done": False}
 
 
 @app.post('/pay/<user_id>/<order_id>/<amount>')
 def remove_credit(user_id: str, order_id: str, amount: int):
-    if db.exists(user_id):
-        user = user_from_json(db.get(user_id))
-        app.logger.debug(f"removing credit from user: {user.__dict__ =}")
-        if user.credit < int(amount):
-            app.logger.debug(f"{user.credit = } is smaller than {amount =} of credit to remove")
-            msg, status_code = "Not enough credit", 403
-        else:
-            user.credit = user.credit - int(amount)
-            db.set(user_id, json.dumps(user.__dict__))
-            idx = construct_payment_id(user_id, order_id)
-            db.set(idx, json.dumps(Payment(idx, user_id, order_id, amount, True).__dict__))
-            app.logger.debug(f"succesfully removed {amount} credit from user with id {user_id}")
-            msg, status_code = "Credit removed", 200
+    user = User.query.get_or_404(user_id)
+    app.logger.debug(f"removing credit from user: {user.__dict__ =}")
+    if user.credit < int(amount):
+        app.logger.debug(f"{user.credit = } is smaller than {amount =} of credit to remove")
+        msg, status_code = "Not enough credit", 403
     else:
-        msg, status_code = "User not found", 404
+        user.credit = user.credit - int(amount)
+        db.session.add(user)
+        idx = construct_payment_id(user_id, order_id)
+        payment = Payment(idx, user_id, order_id, amount, True)
+        db.session.add(payment)
+        app.logger.debug(f"succesfully removed {amount} credit from user with id {user_id}")
+        db.session.commit()
+        msg, status_code = "Credit removed", 200
 
     app.logger.debug(f"Remove credit result, {msg = }, {status_code = }")
     return msg, status_code
@@ -100,18 +100,15 @@ def remove_credit(user_id: str, order_id: str, amount: int):
 
 @app.post('/cancel/<user_id>/<order_id>')
 def cancel_payment(user_id: str, order_id: str):
-    msg, status_code = "User not found", 404
-    if db.exists(user_id):
-        idx = construct_payment_id(user_id, order_id)
-        if db.exists(idx):
-            payment = json.loads(db.get(idx))
-            payment.paid = False
-            user = user_from_json(db.get(user_id))
-            user.credit = user.credit + payment.amount
-            db.set(user_id, json.dumps(user.__dict__))
-            msg, status_code = "payment reset", 200
-        else:
-            msg, status_code = "Payment not found", 404
+    user = User.query.get_or_404(user_id)
+    idx = construct_payment_id(user_id, order_id)
+    payment = Payment.query.get_or_404(idx)
+    payment.paid = False
+    user.credit = user.credit + payment.amount
+    db.session.add(user)
+    db.session.commit()
+
+    msg, status_code = "payment reset", 200
 
     app.logger.debug(f"Cancel payment result, {msg = }, {status_code = }")
     return msg, status_code
@@ -121,8 +118,8 @@ def cancel_payment(user_id: str, order_id: str):
 def payment_status(user_id: str, order_id: str):
     paid = False
     idx = construct_payment_id(user_id, order_id)
-    if db.exists(idx):
-        payment = payment_from_json(db.get(idx))
+    payment = Payment.query.filter_by(id=idx).first()
+    if bool(payment):
         paid = payment.paid
 
     app.logger.debug(f"Order with order id: {order_id} ({user_id = }, paid status: {paid}")
