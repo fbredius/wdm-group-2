@@ -89,6 +89,47 @@ ___
        - `docker-compose build`
        - `docker-compose push`
     
-Similarly to the `minikube` deployment but run the `deploy-charts-cluster.sh` in the helm step to also install an ingress to the cluster.
+NOT TESTED, but you should be able to init a cluster with some nodes to test deploying stuff with:
+
+```
+gcloud beta container --project "versatile-field-350813" node-pools create "pool-1" --cluster "web-scale-cluster" --zone "europe-west4-a" --node-version "1.21.11-gke.900" --machine-type "e2-standard-4" --image-type "COS_CONTAINERD" --disk-type "pd-standard" --disk-size "100" --metadata disable-legacy-endpoints=true --scopes "https://www.googleapis.com/auth/devstorage.read_only","https://www.googleapis.com/auth/logging.write","https://www.googleapis.com/auth/monitoring","https://www.googleapis.com/auth/servicecontrol","https://www.googleapis.com/auth/service.management.readonly","https://www.googleapis.com/auth/trace.append" --num-nodes "1" --enable-autoupgrade --enable-autorepair --max-surge-upgrade 0 --max-unavailable-upgrade 2 --max-pods-per-node "110"
+```
+
+(run in console), DONT FORGET TO DELETE THE NODE POOL AFTER to prevent cost
+
+Similarly to the `minikube` deployment but run the `deploy-charts-cluster.sh` in the helm step to also install an
+ingress to the cluster.
 
 ***Requirements:*** You need to have access to kubectl of a k8s cluster.
+
+## Kubernetes useful commands:
+
+- Deploy changes made to code: <br>
+  `docker-compose build && docker-compose push && kubectl replace --force -f ./k8s/`
+- Resizing cluster (can take a while) <br>
+  `gcloud container clusters resize web-scale-cluster --region europe-west4-a --num-nodes <num_nodes> `
+- Listing pods or Persistent Volume Claims<br>
+  `kubectl get pods`<br>
+  `kubectl get pvc`
+    - Flags:
+        - `-o wide` more verbose output
+        - `-w` watch output (keep updating)
+- Deleting resources<br>
+  `kubectl delete (--force-true) <resource type (pod|pvc|...)> <full resource (pod/pvc) name>`
+    - Or, to delete all resources defined in a yaml file: <br>
+      `kubectl delete -f k8s/<filename>`
+    - Or, just use the Cloud console UI
+    - Delete everything that has to do with stock-postgres <br>
+      `kubectl delete -f k8s/stock-postgres.yaml && kubectl delete pvc -l app=stock-postgres-service`
+
+## Known issues
+
+1. Postgres replicas fail to start and ask for passwords in the logs. (logs fully filled with 'password:')
+   <br>Solution:
+    1. Go to https://console.cloud.google.com/kubernetes/config?project=versatile-field-350813
+    2. Click on 'base-kubegres-config'
+    3. Click on 'Edit'
+    4. add a line `PGPASSWORD=postgres` to the `copy_primary_data_to_replica.sh` script (starts at line 24) after the
+       first `echo` line
+    5. Save
+    6. replace the instances

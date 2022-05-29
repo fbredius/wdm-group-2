@@ -1,0 +1,24 @@
+apiVersion: kubegres.reactive-tech.io/v1
+kind: Kubegres
+metadata:
+  name: user-postgres-service
+  namespace: default
+
+spec:
+  replicas: 3
+  image: postgres:14.1
+
+  customConfig: custom-postgres-config
+
+  database:
+    size: 200Mi
+
+  env:
+    - name: POSTGRES_PASSWORD
+      value: "postgres"
+    - name: PGPASSWORD
+      value: "postgres"
+    - name: POSTGRES_REPLICATION_PASSWORD
+      value: "postgres"
+    - name: POSTGRES_DB_NAME
+      value: "user_db"
