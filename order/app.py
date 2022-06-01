@@ -1,5 +1,6 @@
 import logging
 import os
+import shutil
 import uuid
 
 import requests
@@ -7,8 +8,8 @@ from flask import Flask, Response
 from flask_sqlalchemy import SQLAlchemy
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
-    Summary,
-    generate_latest,
+    Histogram,
+    generate_latest, CollectorRegistry, multiprocess,
 )
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm.attributes import flag_modified
@@ -31,6 +32,14 @@ app.config['SQLALCHEMY_DATABASE_URI'] = DB_URL
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False  # silence the deprecation warning
 
 db = SQLAlchemy(app)
+
+PROMETHEUS_MULTIPROC_DIR = os.environ["PROMETHEUS_MULTIPROC_DIR"]
+# make sure the dir is clean
+shutil.rmtree(PROMETHEUS_MULTIPROC_DIR, ignore_errors=True)
+os.makedirs(PROMETHEUS_MULTIPROC_DIR)
+
+registry = CollectorRegistry()
+multiprocess.MultiProcessCollector(registry)
 
 
 class Order(db.Model):
@@ -65,15 +74,17 @@ if os.environ.get('DOCKER_COMPOSE_RUN') == "True":
 db.create_all()
 db.session.commit()
 
-create_order_metric = Summary("create_order", "Summary of /create/<user_id> endpoint")
-remove_order_metric = Summary("remove_order", "Summary of /remove<order_id>")
-add_item_metric = Summary("add_item", "Summary of /removeItem/<order_id>/<item_id>")
-find_order_metric = Summary("find_order", "Summary of /find/<order_id>")
-checkout_metric = Summary("checkout", "Summary of /checkout/<order_id>")
+total_time_metric = Histogram("order_time", "Time of all requests in order app")
+create_order_metric = Histogram("create_order", "Histogram of /create/<user_id> endpoint")
+remove_order_metric = Histogram("remove_order", "Histogram of /remove<order_id>")
+add_item_metric = Histogram("add_item", "Histogram of /removeItem/<order_id>/<item_id>")
+find_order_metric = Histogram("find_order", "Histogram of /find/<order_id>")
+checkout_metric = Histogram("checkout", "Histogram of /checkout/<order_id>")
 
 
 @app.post('/create/<user_id>')
 @create_order_metric.time()
+@total_time_metric.time()
 def create_order(user_id):
     idx = str(uuid.uuid4())
     order = Order(idx, False, [], user_id, 0)
@@ -84,6 +95,7 @@ def create_order(user_id):
 
 @app.delete('/remove/<order_id>')
 @remove_order_metric.time()
+@total_time_metric.time()
 def remove_order(order_id):
     Order.query.filter_by(id=order_id).delete()
     db.session.commit()
@@ -92,6 +104,7 @@ def remove_order(order_id):
 
 @app.post('/addItem/<order_id>/<item_id>')
 @add_item_metric.time()
+@total_time_metric.time()
 def add_item(order_id, item_id):
     app.logger.debug(f"Adding item to {order_id = }, {item_id =}")
     order = Order.query.get_or_404(order_id)
@@ -107,6 +120,7 @@ def add_item(order_id, item_id):
 
 @app.delete('/removeItem/<order_id>/<item_id>')
 @remove_order_metric.time()
+@total_time_metric.time()
 def remove_item(order_id, item_id):
     order = Order.query.get_or_404(order_id)
     order.items.remove(item_id)
@@ -117,12 +131,14 @@ def remove_item(order_id, item_id):
 
 @app.get('/find/<order_id>')
 @find_order_metric.time()
+@total_time_metric.time()
 def find_order(order_id):
     return Order.query.get_or_404(order_id).as_dict()
 
 
 @app.post('/checkout/<order_id>')
 @checkout_metric.time()
+@total_time_metric.time()
 def checkout(order_id):
     app.logger.debug(f"Checking out order {order_id}")
     order: Order = Order.query.get_or_404(order_id)
@@ -159,6 +175,6 @@ def checkout(order_id):
 
 @app.route("/metrics")
 def metrics():
-    data = generate_latest()
+    data = generate_latest(registry)
     app.logger.debug(f"Metrics, returning: {data}")
     return Response(data, mimetype=CONTENT_TYPE_LATEST)

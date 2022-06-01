@@ -1,9 +1,11 @@
 import logging
 import os
+import shutil
 import uuid
 
-from flask import Flask
+from flask import Flask, Response
 from flask_sqlalchemy import SQLAlchemy
+from prometheus_client import CollectorRegistry, multiprocess, Summary, CONTENT_TYPE_LATEST, generate_latest
 
 app_name = 'payment-service'
 app = Flask(app_name)
@@ -19,6 +21,14 @@ app.config['SQLALCHEMY_DATABASE_URI'] = DB_URL
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False  # silence the deprecation warning
 
 db = SQLAlchemy(app)
+
+PROMETHEUS_MULTIPROC_DIR = os.environ["PROMETHEUS_MULTIPROC_DIR"]
+# make sure the dir is clean
+shutil.rmtree(PROMETHEUS_MULTIPROC_DIR, ignore_errors=True)
+os.makedirs(PROMETHEUS_MULTIPROC_DIR)
+
+registry = CollectorRegistry()
+multiprocess.MultiProcessCollector(registry)
 
 
 class User(db.Model):
@@ -66,12 +76,20 @@ if os.environ.get('DOCKER_COMPOSE_RUN') == "True":
 db.create_all()
 db.session.commit()
 
+create_order_metric = Summary("create_user", "Summary of /create_user endpoint")
+find_user_metric = Summary("find_user", "Summary of /find_user/<user_id>")
+add_credit_metric = Summary("add_credit", "Summary of /add_funds/<user_id>/<amount>")
+remove_credit_metric = Summary("remove_credit", "Summary of /pay/<user_id>/<order_id>/<amount>")
+cancel_payment_metric = Summary("cancel_payment", "/cancel/<user_id>/<order_id>")
+payment_status_metric = Summary("payment_status", "/status/<user_id>/<order_id>")
+
 
 def construct_payment_id(user_id, order_id):
     return user_id + '/' + order_id
 
 
 @app.post('/create_user')
+@create_order_metric.time()
 def create_user():
     idx = str(uuid.uuid4())
     user = User(idx, 0)
@@ -81,11 +99,13 @@ def create_user():
 
 
 @app.get('/find_user/<user_id>')
+@find_user_metric.time()
 def find_user(user_id: str):
     return User.query.get_or_404(user_id).as_dict()
 
 
 @app.post('/add_funds/<user_id>/<amount>')
+@add_credit_metric.time()
 def add_credit(user_id: str, amount: float):
     user = User.query.filter_by(id=user_id).first()
     done = False
@@ -99,6 +119,7 @@ def add_credit(user_id: str, amount: float):
 
 
 @app.post('/pay/<user_id>/<order_id>/<amount>')
+@remove_credit_metric.time()
 def remove_credit(user_id: str, order_id: str, amount: float):
     user = User.query.get_or_404(user_id)
     app.logger.debug(f"removing credit from user: {user.__dict__ =}")
@@ -121,6 +142,7 @@ def remove_credit(user_id: str, order_id: str, amount: float):
 
 
 @app.post('/cancel/<user_id>/<order_id>')
+@cancel_payment_metric.time()
 def cancel_payment(user_id: str, order_id: str):
     user = User.query.get_or_404(user_id)
     idx = construct_payment_id(user_id, order_id)
@@ -137,6 +159,7 @@ def cancel_payment(user_id: str, order_id: str):
 
 
 @app.post('/status/<user_id>/<order_id>')
+@payment_status_metric.time()
 def payment_status(user_id: str, order_id: str):
     paid = False
     idx = construct_payment_id(user_id, order_id)
@@ -146,3 +169,10 @@ def payment_status(user_id: str, order_id: str):
 
     app.logger.debug(f"Order with order id: {order_id} ({user_id = }, paid status: {paid}")
     return {"paid": paid}
+
+
+@app.route("/metrics")
+def metrics():
+    data = generate_latest(registry)
+    app.logger.debug(f"Metrics, returning: {data}")
+    return Response(data, mimetype=CONTENT_TYPE_LATEST)

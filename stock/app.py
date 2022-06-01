@@ -1,11 +1,13 @@
 import logging
 import os
+import shutil
 import uuid
 
 import requests
-from flask import Flask
+from flask import Flask, Response
 from flask import request
 from flask_sqlalchemy import SQLAlchemy
+from prometheus_client import CollectorRegistry, multiprocess, generate_latest, CONTENT_TYPE_LATEST, Summary
 from sqlalchemy.dialects.postgresql import JSON
 
 app_name = 'stock-service'
@@ -24,6 +26,14 @@ app.config['SQLALCHEMY_DATABASE_URI'] = DB_URL
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False  # silence the deprecation warning
 
 db = SQLAlchemy(app)
+
+PROMETHEUS_MULTIPROC_DIR = os.environ["PROMETHEUS_MULTIPROC_DIR"]
+# make sure the dir is clean
+shutil.rmtree(PROMETHEUS_MULTIPROC_DIR, ignore_errors=True)
+os.makedirs(PROMETHEUS_MULTIPROC_DIR)
+
+registry = CollectorRegistry()
+multiprocess.MultiProcessCollector(registry)
 
 
 class Order(db.Model):
@@ -79,8 +89,15 @@ if os.environ.get('DOCKER_COMPOSE_RUN') == "True":
 db.create_all()
 db.session.commit()
 
+create_item_metric = Summary("create_item", "Summary of /item/create/<price> endpoint")
+find_item_metric = Summary("find_item", "Summary of /find/<item_id>")
+add_stock_metric = Summary("add_stock", "Summary of /add/<item_id>/<amount>")
+remove_stock_metric = Summary("remove_stock", "/subtract/<item_id>/<amount>")
+checkout_items_metric = Summary("checkout_items", "/checkout/")
+
 
 @app.post('/item/create/<price>')
+@create_item_metric.time()
 def create_item(price: float):
     idx = str(uuid.uuid4())
     item = Item(idx, float(price), 0)
@@ -90,12 +107,14 @@ def create_item(price: float):
 
 
 @app.get('/find/<item_id>')
+@find_item_metric.time()
 def find_item(item_id: str):
     app.logger.debug(f"Finding: {item_id=}")
     return Item.query.get_or_404(item_id).as_dict()
 
 
 @app.post('/add/<item_id>/<amount>')
+@add_stock_metric.time()
 def add_stock(item_id: str, amount: int):
     item = Item.query.get_or_404(item_id)
     item.stock = item.stock + int(amount)
@@ -105,6 +124,7 @@ def add_stock(item_id: str, amount: int):
 
 
 @app.post('/subtract/<item_id>/<amount>')
+@remove_stock_metric.time()
 def remove_stock(item_id: str, amount: int):
     item = Item.query.get_or_404(item_id)
     app.logger.debug(f"Attempting to take {amount} from stock of {item.__dict__=}")
@@ -121,6 +141,7 @@ def remove_stock(item_id: str, amount: int):
 
 
 @app.post('/checkout/')
+@checkout_items_metric.time()
 def checkout_items():
     app.logger.debug(f"checkout items for")
     app.logger.debug(f"{request.json =}")
@@ -153,3 +174,10 @@ def checkout_items():
     db.session.commit()
 
     return "paid and stock subtracted", 200
+
+
+@app.route("/metrics")
+def metrics():
+    data = generate_latest(registry)
+    app.logger.debug(f"Metrics, returning: {data}")
+    return Response(data, mimetype=CONTENT_TYPE_LATEST)
