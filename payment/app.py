@@ -86,11 +86,11 @@ def find_user(user_id: str):
 
 
 @app.post('/add_funds/<user_id>/<amount>')
-def add_credit(user_id: str, amount: int):
+def add_credit(user_id: str, amount: float):
     user = User.query.filter_by(id=user_id).first()
     done = False
     if bool(user):
-        user.credit = user.credit + int(amount)
+        user.credit = user.credit + float(amount)
         db.session.add(user)
         db.session.commit()
         done = True

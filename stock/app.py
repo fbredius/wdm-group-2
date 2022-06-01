@@ -81,9 +81,9 @@ db.session.commit()
 
 
 @app.post('/item/create/<price>')
-def create_item(price: int):
+def create_item(price: float):
     idx = str(uuid.uuid4())
-    item = Item(idx, int(price), 0)
+    item = Item(idx, float(price), 0)
     db.session.add(item)
     db.session.commit()
     return {"item_id": idx}, 200
