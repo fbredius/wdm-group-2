@@ -1,26 +1,17 @@
 #!/usr/bin/env python
 import pika
-from producer import Producer
 
 # Establish connection with RabbitMQ Server
 host = pika.ConnectionParameters(host='rabbitmq')
 connection = pika.BlockingConnection(host)
 channel = connection.channel()
 
-producer = Producer()
-
 
 # When a message is received, this function is called
 def callback(ch, method, properties, body):
     request = body.decode()
     print(" [x] Received order %r" % request)
-    check = int(producer.publish(request).decode())
-    if check == 200:
-        response = 200
-        print(" [x] Payment successful")
-    else:
-        response = 400
-        print(" [x] Not enough credit")
+    response = 200
     ch.basic_publish(exchange='',
                      routing_key=str(properties.reply_to),
                      properties=pika.BasicProperties(correlation_id=properties.correlation_id),
