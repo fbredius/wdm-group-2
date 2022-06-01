@@ -16,12 +16,12 @@ services:
     image: europe-west4-docker.pkg.dev/versatile-field-350813/web-scale-repository/order:latest
     environment:
       - GATEWAY_URL=http://gateway:80
+    command: gunicorn -b 0.0.0.0:5000 app:app
     depends_on:
       order-postgres-service:
         condition: service_healthy
-    command: gunicorn -b 0.0.0.0:5000 app:app
+
     env_file:
-      - env/order_redis.env
       - env/order_postgres.env
 
   order-postgres-service:
@@ -46,7 +46,6 @@ services:
         condition: service_healthy
     command: gunicorn -b 0.0.0.0:5000 app:app
     env_file:
-      - env/stock_redis.env
       - env/stock_postgres.env
 
   stock-postgres-service:
@@ -67,7 +66,6 @@ services:
       payment-postgres-service:
         condition: service_healthy
     env_file:
-      - env/payment_redis.env
       - env/payment_postgres.env
 
   payment-postgres-service:

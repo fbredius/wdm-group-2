@@ -1,11 +1,15 @@
 import logging
-import logging
 import os
 import uuid
 
 import requests
-from flask import Flask
+from flask import Flask, Response
 from flask_sqlalchemy import SQLAlchemy
+from prometheus_client import (
+    CONTENT_TYPE_LATEST,
+    Summary,
+    generate_latest,
+)
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.types import String, Float, Boolean
@@ -61,8 +65,15 @@ if os.environ.get('DOCKER_COMPOSE_RUN') == "True":
 db.create_all()
 db.session.commit()
 
+create_order_metric = Summary("create_order", "Summary of /create/<user_id> endpoint")
+remove_order_metric = Summary("remove_order", "Summary of /remove<order_id>")
+add_item_metric = Summary("add_item", "Summary of /removeItem/<order_id>/<item_id>")
+find_order_metric = Summary("find_order", "Summary of /find/<order_id>")
+checkout_metric = Summary("checkout", "Summary of /checkout/<order_id>")
+
 
 @app.post('/create/<user_id>')
+@create_order_metric.time()
 def create_order(user_id):
     idx = str(uuid.uuid4())
     order = Order(idx, False, [], user_id, 0)
@@ -72,6 +83,7 @@ def create_order(user_id):
 
 
 @app.delete('/remove/<order_id>')
+@remove_order_metric.time()
 def remove_order(order_id):
     Order.query.filter_by(id=order_id).delete()
     db.session.commit()
@@ -79,6 +91,7 @@ def remove_order(order_id):
 
 
 @app.post('/addItem/<order_id>/<item_id>')
+@add_item_metric.time()
 def add_item(order_id, item_id):
     app.logger.debug(f"Adding item to {order_id = }, {item_id =}")
     order = Order.query.get_or_404(order_id)
@@ -93,6 +106,7 @@ def add_item(order_id, item_id):
 
 
 @app.delete('/removeItem/<order_id>/<item_id>')
+@remove_order_metric.time()
 def remove_item(order_id, item_id):
     order = Order.query.get_or_404(order_id)
     order.items.remove(item_id)
@@ -102,11 +116,13 @@ def remove_item(order_id, item_id):
 
 
 @app.get('/find/<order_id>')
+@find_order_metric.time()
 def find_order(order_id):
     return Order.query.get_or_404(order_id).as_dict()
 
 
 @app.post('/checkout/<order_id>')
+@checkout_metric.time()
 def checkout(order_id):
     app.logger.debug(f"Checking out order {order_id}")
     order: Order = Order.query.get_or_404(order_id)
@@ -139,3 +155,10 @@ def checkout(order_id):
         db.session.commit()
     app.logger.debug(f"order successful")
     return "Order successful", 200
+
+
+@app.route("/metrics")
+def metrics():
+    data = generate_latest()
+    app.logger.debug(f"Metrics, returning: {data}")
+    return Response(data, mimetype=CONTENT_TYPE_LATEST)
