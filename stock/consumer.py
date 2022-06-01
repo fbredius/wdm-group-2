@@ -2,8 +2,7 @@
 import pika
 from producer import Producer
 
-# host = pika.URLParameters(
-#     'amqps://sskbplbr:33XzmeNedhO9KVfmaxsHZfiVquNzl6DO@whale.rmq.cloudamqp.com/sskbplbr')
+# Establish connection with RabbitMQ Server
 host = pika.ConnectionParameters(host='rabbitmq')
 connection = pika.BlockingConnection(host)
 channel = connection.channel()
@@ -35,6 +34,8 @@ channel.queue_declare(queue='stock', durable=True)
 
 # Prevents dispatching new message to a worker that has not processed and acknowledged the previous one yet
 channel.basic_qos(prefetch_count=1)
+
+# Attach the callback to 'stock' queue
 channel.basic_consume(queue='stock', on_message_callback=callback)
 
 # Start waiting for messages

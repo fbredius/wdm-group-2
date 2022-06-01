@@ -5,8 +5,6 @@ import pika
 
 class Producer(object):
     def __init__(self):
-        # host = pika.URLParameters(
-        #     'amqps://sskbplbr:33XzmeNedhO9KVfmaxsHZfiVquNzl6DO@whale.rmq.cloudamqp.com/sskbplbr')
         host = pika.ConnectionParameters(host='rabbitmq')
         self.connection = pika.BlockingConnection(host)
         self.channel = self.connection.channel()
