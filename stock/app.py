@@ -120,37 +120,59 @@ def remove_stock(item_id: str, amount: int):
     return msg, return_code
 
 
-@app.post('/checkout/')
-def checkout_items():
-    app.logger.debug(f"checkout items for")
+@app.post('/subtractItems/')
+def subtract_items():
+    app.logger.debug(f"Subtract the items for request:")
     app.logger.debug(f"{request.json =}")
-    item_ids = request.json['order']['items']
 
-    # Subtracts stock of all items by 1 and sums prices
-
-    # filter_list = [Item.id == x for x in item_ids]
-
+    # Subtracts stock of all items by 1
+    # TODO Check if item is in stock
     items = db.session.query(Item).filter(
-        Item.id.in_(item_ids)
+        Item.id.in_(request.json['item_ids'])
     )
     app.logger.debug(f"items= {items}")
 
-    total_price = 0
     item: Item
     for item in items:
         item.stock -= 1
         db.session.add(item)
-        total_price += item.price
-
-    # pay
-    payment_request_url = f"{payment_url}/pay/{request.json['order']['user_id']}/{request.json['order']['id']}/{total_price} "
-    app.logger.debug(f"requesting payment for {total_price} to {payment_request_url}")
-    payment_response = requests.post(payment_request_url)
-    if not (200 <= payment_response.status_code < 300):
-        app.logger.debug(f"payment response code not success, {payment_response.text}")
-        return payment_response.text, 400
 
     db.session.commit()
 
-    return "paid and stock subtracted", 200
+    return "stock subtracted", 200
 
+
+@app.post('/increaseItems/')
+def increase_items():
+    """
+    This is a rollback function. Following the SAGA pattern.
+    :return:
+    """
+    app.logger.debug(f"Increase the items for request:")
+    app.logger.debug(f"{request.json =}")
+
+    # Increases stock of all items by 1
+    items = db.session.query(Item).filter(
+        Item.id.in_(request.json['item_ids'])
+    )
+    app.logger.debug(f"items= {items}")
+
+    item: Item
+    for item in items:
+        item.stock += 1
+        db.session.add(item)
+
+    db.session.commit()
+
+    return "stock increased", 200
+
+
+@app.post('/calculatePrice')
+def calculate_price():
+    items = db.session.query(Item).filter(
+        Item.id.in_(request.json['item_ids'])
+    )
+
+    total_price = sum(item.price for item in items)
+
+    return {"total_price": total_price}, 200
