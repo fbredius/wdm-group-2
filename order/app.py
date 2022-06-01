@@ -108,28 +108,52 @@ def find_order(order_id):
 
 @app.post('/checkout/<order_id>')
 def checkout(order_id):
+    """
+    Handle the checkout.
+    First we talk to the stock service to subtract the items.
+    Then we talk to the payment service to make the payment.
+    If one of both fails, we do rollback the commit, and we return status code 400.
+    Else we return 200.
+    :param order_id:
+    :return:
+    """
     app.logger.debug(f"Checking out order {order_id}")
     order: Order = Order.query.get_or_404(order_id)
     app.logger.debug(f"Found order in checkout: {order.as_dict()}")
     if order.paid:
         app.logger.debug(f"order already paid")
-        return "Order already paid", 200
+        return "Order already paid", 400
 
-    # Send all items to stock service
-    # if enough stock
-    # accumulate price and send to payment service
-    # if enough credit
-    # pay
-    # if paid remove stock
-    # if paid return success
-
-    # Get prices of all items in order
+    # Subtract Stock
     app.logger.debug(f"sending request to stock-service at {stock_url} with order: {order.as_dict()}")
-    stock_response = requests.post(f"{stock_url}/checkout", json={
-        "order": order.as_dict()
+    stock_response = requests.post(f"{stock_url}/subtractItems", json={
+        "item_ids": order.items
     })
 
-    # TODO handle all cases except the positive one
+    # ----------------- This block is currently synchronous ----------- #
+    # Get Total Price, needed to handle Payment
+    calculate_price_response = requests.post(f"{stock_url}/calculatePrice", json={
+        "item_ids": order.items
+    })
+    total_price = calculate_price_response.json()['total_price']
+
+    # Handle Payment
+    payment_request_url = f"{payment_url}/pay/{order.user_id}/{order.id}/{total_price}"
+    app.logger.debug(f"requesting payment for {total_price} to {payment_request_url}")
+    payment_response = requests.post(payment_request_url)
+    # ---------------------------------------------------------------- #
+
+    # Handle Transaction
+    if not (200 <= payment_response.status_code < 300):
+        # Rollback Stock subtraction if payment fails
+        if 200 <= stock_response.status_code < 300:
+            requests.post(f"{stock_url}/increaseItems", json={
+                "item_ids": order.items
+            })
+
+        app.logger.debug(f"payment response code not success, {payment_response.text}")
+        return payment_response.text, 400
+
     if not (200 <= stock_response.status_code < 300):
         app.logger.debug(f"stock response code not success, {stock_response.text}")
         return stock_response.text, 400
