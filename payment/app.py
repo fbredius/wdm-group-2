@@ -2,8 +2,11 @@ import logging
 import os
 import uuid
 
+import pika
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
+
+from consumer import Consumer
 
 app_name = 'payment-service'
 app = Flask(app_name)
@@ -65,6 +68,22 @@ if os.environ.get('DOCKER_COMPOSE_RUN') == "True":
 
 db.create_all()
 db.session.commit()
+
+
+# When a message is received, this function is called
+def callback(ch, method, properties, body):
+    request = body.decode()
+    app.logger.debug("[stock queue] Received order %s", request)
+    response = "payment"
+    ch.basic_publish(exchange='',
+                     routing_key=str(properties.reply_to),
+                     properties=pika.BasicProperties(correlation_id=properties.correlation_id),
+                     body=str(response))
+    ch.basic_ack(delivery_tag=method.delivery_tag)
+    app.logger.debug("[stock queue] Done")
+
+
+Consumer(callback).run()
 
 
 def construct_payment_id(user_id, order_id):

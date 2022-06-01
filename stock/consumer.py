@@ -1,34 +1,26 @@
 #!/usr/bin/env python
 import pika
 
-# Establish connection with RabbitMQ Server
-host = pika.ConnectionParameters(host='rabbitmq')
-connection = pika.BlockingConnection(host)
-channel = connection.channel()
 
+class Consumer(object):
+    def __init__(self, callback):
+        host = pika.ConnectionParameters(host='rabbitmq')  # Should be changed to rabbitmq
+        self.connection = pika.BlockingConnection(host)
+        self.channel = self.connection.channel()
 
-# When a message is received, this function is called
-def callback(ch, method, properties, body):
-    request = body.decode()
-    print(" [x] Received order %r" % request)
-    response = 200
-    ch.basic_publish(exchange='',
-                     routing_key=str(properties.reply_to),
-                     properties=pika.BasicProperties(correlation_id=properties.correlation_id),
-                     body=str(response))
-    ch.basic_ack(delivery_tag=method.delivery_tag)
-    print(" [x] Done")
+        # Declare payment queue
+        res = self.channel.queue_declare(queue='stock', durable=True)
+        self.queue = res.method.queue
 
+        # Prevents dispatching new message to a worker that has not processed and acknowledged the previous one yet
+        self.channel.basic_qos(prefetch_count=1)
 
-# Declare the queue
-channel.queue_declare(queue='stock', durable=True)
+        # Attach callback to 'payment' queue
+        self.channel.basic_consume(queue=self.queue, on_message_callback=callback)
 
-# Prevents dispatching new message to a worker that has not processed and acknowledged the previous one yet
-channel.basic_qos(prefetch_count=1)
+    def run(self):
+        self.channel.start_consuming()
 
-# Attach the callback to 'stock' queue
-channel.basic_consume(queue='stock', on_message_callback=callback)
-
-# Start waiting for messages
-print("Waiting for messages")
-channel.start_consuming()
+    def close(self):
+        self.channel.close()
+        self.connection.close()
