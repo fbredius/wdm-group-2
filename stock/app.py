@@ -55,6 +55,11 @@ db.session.commit()
 
 @app.post('/item/create/<price>')
 def create_item(price: float):
+    """
+    Adds an item and its price
+    :param price:
+    :return: the item's id
+    """
     idx = str(uuid.uuid4())
     item = Item(idx, float(price), 0)
     db.session.add(item)
@@ -64,12 +69,23 @@ def create_item(price: float):
 
 @app.get('/find/<item_id>')
 def find_item(item_id: str):
+    """
+    Return an item's availability and price
+    :param item_id:
+    :return: Item { id, stock, price }
+    """
     app.logger.debug(f"Finding: {item_id=}")
     return Item.query.get_or_404(item_id).as_dict()
 
 
 @app.post('/add/<item_id>/<amount>')
 def add_stock(item_id: str, amount: int):
+    """
+    Adds the given number of stock items to the item count in the stock
+    :param item_id:
+    :param amount:
+    :return:
+    """
     item = Item.query.get_or_404(item_id)
     item.stock = item.stock + int(amount)
     db.session.add(item)
@@ -79,6 +95,12 @@ def add_stock(item_id: str, amount: int):
 
 @app.post('/subtract/<item_id>/<amount>')
 def remove_stock(item_id: str, amount: int):
+    """
+    Subtracts an item from stock by the amount specified
+    :param item_id:
+    :param amount:
+    :return:
+    """
     item = Item.query.get_or_404(item_id)
     app.logger.debug(f"Attempting to take {amount} from stock of {item.__dict__=}")
     if item.stock >= int(amount):
@@ -95,10 +117,14 @@ def remove_stock(item_id: str, amount: int):
 
 @app.post('/subtractItems/')
 def subtract_items():
+    """
+    Substracts all items in the list from stock by the amount of 1
+    Pass in an 'items_ids" array as JSON in the POST request.
+    :return:
+    """
     app.logger.debug(f"Subtract the items for request:")
     app.logger.debug(f"{request.json =}")
 
-    # Subtracts stock of all items by 1
     items = db.session.query(Item).filter(
         Item.id.in_(request.json['item_ids'])
     )
@@ -123,12 +149,13 @@ def subtract_items():
 def increase_items():
     """
     This is a rollback function. Following the SAGA pattern.
+    Increases all items in the list from stock by the amount of 1
+    Pass in an 'items_ids" array as JSON in the POST request.
     :return:
     """
     app.logger.debug(f"Increase the items for request:")
     app.logger.debug(f"{request.json =}")
 
-    # Increases stock of all items by 1
     items = db.session.query(Item).filter(
         Item.id.in_(request.json['item_ids'])
     )

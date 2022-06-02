@@ -73,6 +73,10 @@ def construct_payment_id(user_id, order_id):
 
 @app.post('/create_user')
 def create_user():
+    """
+    Creates a user with 0 credit
+    :return: the user's id
+    """
     idx = str(uuid.uuid4())
     user = User(idx, 0)
     db.session.add(user)
@@ -82,11 +86,22 @@ def create_user():
 
 @app.get('/find_user/<user_id>')
 def find_user(user_id: str):
+    """
+    Returns the user information
+    :param user_id:
+    :return: User { id, credit }
+    """
     return User.query.get_or_404(user_id).as_dict()
 
 
 @app.post('/add_funds/<user_id>/<amount>')
 def add_credit(user_id: str, amount: float):
+    """
+    Adds funds (amount) to the user's account
+    :param user_id:
+    :param amount:
+    :return: true / false
+    """
     user = User.query.filter_by(id=user_id).first()
     done = False
     if bool(user):
@@ -100,6 +115,14 @@ def add_credit(user_id: str, amount: float):
 
 @app.post('/pay/<user_id>/<order_id>/<amount>')
 def remove_credit(user_id: str, order_id: str, amount: float):
+    """
+    Subtracts the amount of the order from the user's credit
+    Returns failure if credit is not enough
+    :param user_id:
+    :param order_id:
+    :param amount:
+    :return:
+    """
     user = User.query.get_or_404(user_id)
     app.logger.debug(f"removing credit from user: {user.__dict__ =}")
     amount = float(amount)
@@ -122,6 +145,12 @@ def remove_credit(user_id: str, order_id: str, amount: float):
 
 @app.post('/cancel/<user_id>/<order_id>')
 def cancel_payment(user_id: str, order_id: str):
+    """
+    Cancels the payment made by a specific user for a specific order
+    :param user_id:
+    :param order_id:
+    :return:
+    """
     user = User.query.get_or_404(user_id)
     idx = construct_payment_id(user_id, order_id)
     payment = Payment.query.get_or_404(idx)
@@ -138,6 +167,12 @@ def cancel_payment(user_id: str, order_id: str):
 
 @app.post('/status/<user_id>/<order_id>')
 def payment_status(user_id: str, order_id: str):
+    """
+    Returns the status of the payment
+    :param user_id:
+    :param order_id:
+    :return: true / false
+    """
     paid = False
     idx = construct_payment_id(user_id, order_id)
     payment = Payment.query.filter_by(id=idx).first()

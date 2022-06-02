@@ -64,6 +64,11 @@ db.session.commit()
 
 @app.post('/create/<user_id>')
 def create_order(user_id):
+    """
+    Creates an order for the given user, and returns an order_id
+    :param user_id:
+    :return: the order's id
+    """
     idx = str(uuid.uuid4())
     order = Order(idx, False, [], user_id, 0)
     db.session.add(order)
@@ -73,6 +78,11 @@ def create_order(user_id):
 
 @app.delete('/remove/<order_id>')
 def remove_order(order_id):
+    """
+    Deletes an order by ID
+    :param order_id:
+    :return:
+    """
     Order.query.filter_by(id=order_id).delete()
     db.session.commit()
     return
@@ -80,6 +90,12 @@ def remove_order(order_id):
 
 @app.post('/addItem/<order_id>/<item_id>')
 def add_item(order_id, item_id):
+    """
+    Adds a given item in the order given
+    :param order_id:
+    :param item_id:
+    :return:
+    """
     app.logger.debug(f"Adding item to {order_id = }, {item_id =}")
     order = Order.query.get_or_404(order_id)
     app.logger.debug(f"before {order.items = }")
@@ -102,6 +118,12 @@ def add_item(order_id, item_id):
 
 @app.delete('/removeItem/<order_id>/<item_id>')
 def remove_item(order_id, item_id):
+    """
+    Removes the given item from the given order
+    :param order_id:
+    :param item_id:
+    :return:
+    """
     order = Order.query.get_or_404(order_id)
 
     # Remove item from order.items list
@@ -120,6 +142,11 @@ def remove_item(order_id, item_id):
 
 @app.get('/find/<order_id>')
 def find_order(order_id):
+    """
+    Retrieves the information of an order
+    :param order_id:
+    :return: Order { order_id, paid, items, user_id, total_cost }
+    """
     return Order.query.get_or_404(order_id).as_dict()
 
 
