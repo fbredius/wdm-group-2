@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+import atexit
 import json
 import time
 
@@ -25,27 +26,41 @@ class Consumer(object):
 
     def callback(self, ch, method, properties, body):
         # request = json.loads(body.decode())
+        # Read the request and task to do
         request = body.decode()
-        print("[payment queue] Received order %s", request)
-        res = 200
-        msg = "Payment"
+        task = properties.type
+        print("[payment queue] Received payment request: ", request)
+        res = 400
+        msg = "Payment {} has not been processed".format(request)
+
+        # Execute the task
+        if task == "pay":
+            res = 200
+            msg = "Credit removed"
+            print("[payment queue] Credit removed")
+        elif task == "notPay":
+            res = 403
+            msg = "Not enough credit"
+            print("[payment queue] Not enough credit")
         # msg, res = remove_credit(str(request["user"]), str(request["order"]), float(request["amount"]))
-        time.sleep(10)
-        if res == 200:
-            ch.basic_publish(exchange='',
-                             routing_key=str(properties.reply_to),
-                             properties=pika.BasicProperties(
-                                 correlation_id=properties.correlation_id,
-                                 type=str(res)),
-                             body=str(msg))
-            ch.basic_ack(delivery_tag=method.delivery_tag)
-            print("[payment queue] Done")
+        time.sleep(5)
+
+        # Send back a reply
+        ch.basic_publish(exchange='',
+                         routing_key=str(properties.reply_to),
+                         properties=pika.BasicProperties(
+                             correlation_id=properties.correlation_id,
+                             type=str(res)),
+                         body=str(msg))
+        ch.basic_ack(delivery_tag=method.delivery_tag)
+        print("[payment queue] Done")
 
     def run(self):
         print("Start consuming payment queue")
         self.channel.start_consuming()
 
     def close(self):
+        print("Closing AMQP connection")
         self.channel.close()
         self.connection.close()
 
@@ -70,6 +85,10 @@ def remove_credit(user_id: str, order_id: str, amount: float):
     return msg, status_code
 
 
-if __name__ == '__main__':
-    consumer = Consumer()
-    consumer.run()
+# if __name__ == '__main__':
+#     consumer = Consumer()
+#     consumer.run()
+
+consumer = Consumer()
+consumer.run()
+atexit.register(consumer.close())

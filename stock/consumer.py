@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+import atexit
+import json
 import time
 
 import pika
@@ -23,36 +25,47 @@ class Consumer(object):
         self.channel.basic_consume(queue=self.queue, on_message_callback=self.callback)
 
     def callback(self, ch, method, properties, body):
+        # Read the request and task to do
         request = body.decode()
-        print("[stock queue] Received order %s", request)
-        type = properties.type
-        res = 200
-        msg = "Stock"
-        # if type == "subtractItems":
-        #     msg, res = subtract_items(request)  # Subtract function here
-        #     print("[stock queue] Items subtracted")
-        # elif type == "increaseItems":
-        #     msg, res = increase_items(request)  # Increase function here
-        #     print("[stock queue] Items increased")
-        # elif type == "calculatePrice":
-        #     msg, res = calculate_price(request)  # Calculate function here
-        #     print("[stock queue] Items price calculated")
-        time.sleep(5)
-        if res == 200:
-            ch.basic_publish(exchange='',
-                             routing_key=str(properties.reply_to),
-                             properties=pika.BasicProperties(
-                                 correlation_id=properties.correlation_id,
-                                 type=str(res)),
-                             body=str(msg))
-            ch.basic_ack(delivery_tag=method.delivery_tag)
-            print("[stock queue] Done")
+        task = properties.type
+        print("[stock queue] Received order: ", request)
+        res = 400
+        msg = "Stock task {} has not been processed".format(request)
+
+        # Execute the task
+        if task == "subtractItems":
+            # msg, res = subtract_items(request)  # Subtract function here
+            res = 200
+            msg = "stock subtracted"
+            print("[stock queue] Items subtracted")
+        elif task == "increaseItems":
+            # msg, res = increase_items(request)  # Increase function here
+            res = 200
+            msg = "stock increased"
+            print("[stock queue] Items increased")
+        elif task == "calculatePrice":
+            # msg, res = calculate_price(request)  # Calculate function here
+            res = 200
+            msg = json.dumps({"total_price": 10})
+            print("[stock queue] Items price calculated")
+        time.sleep(10)
+
+        # Send back a reply
+        ch.basic_publish(exchange='',
+                         routing_key=str(properties.reply_to),
+                         properties=pika.BasicProperties(
+                             correlation_id=properties.correlation_id,
+                             type=str(res)),
+                         body=str(msg))
+        ch.basic_ack(delivery_tag=method.delivery_tag)
+        print("[stock queue] Done")
 
     def run(self):
         print("Start consuming stock queue")
         self.channel.start_consuming()
 
     def close(self):
+        print("Closing AMQP connection")
         self.channel.close()
         self.connection.close()
 
@@ -106,6 +119,10 @@ def calculate_price(item_ids):
     return {"total_price": total_price}, 200
 
 
-if __name__ == '__main__':
-    consumer = Consumer()
-    consumer.run()
+# if __name__ == '__main__':
+#     consumer = Consumer()
+#     consumer.run()
+
+consumer = Consumer()
+consumer.run()
+atexit.register(consumer.close())

@@ -2,7 +2,6 @@
 import uuid
 import pika
 
-
 class Producer(object):
     def __init__(self, connection, queue):
         # host = pika.ConnectionParameters(host='rabbitmq')
@@ -58,8 +57,8 @@ if __name__ == '__main__':
     # print(json.loads(producer.publish("increaseItems", "ORDER 2").decode())["total_price"])
     # print(producer1.publish("ORDER 1", "subtractItems").decode())
     # print(producer2.publish("PAYMENT 1").decode())
-    producer1.publish("ORDER 11", "subtractItems")
-    producer2.publish("PAYMENT 11")
+    producer1.publish("ORDER 12", "subtractItems")
+    producer2.publish("ORDER 12", "pay")
     producer1.consume()
     producer2.consume()
     print("Waiting for response...")
