@@ -165,14 +165,3 @@ def increase_items():
     db.session.commit()
 
     return "stock increased", 200
-
-
-@app.post('/calculatePrice')
-def calculate_price():
-    items = db.session.query(Item).filter(
-        Item.id.in_(request.json['item_ids'])
-    )
-
-    total_price = sum(item.price for item in items)
-
-    return {"total_price": total_price}, 200
