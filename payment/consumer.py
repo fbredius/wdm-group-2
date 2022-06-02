@@ -3,10 +3,12 @@ import atexit
 import json
 import time
 import logging
-
 import pika
 
 from app import User, Payment, construct_payment_id, db
+
+logging.basicConfig()
+logging.getLogger().setLevel(logging.DEBUG)
 
 
 class Consumer(object):
@@ -53,7 +55,6 @@ class Consumer(object):
             msg, status = self._remove_credit(user_id, order_id, total_cost)
         elif task == "cancel":
             msg, status = self._cancel_payment(user_id, order_id)
-        # time.sleep(2)
 
         # Send back a reply if necessary
         if routing is not None:
@@ -62,7 +63,7 @@ class Consumer(object):
                                        properties=pika.BasicProperties(
                                            correlation_id=properties.correlation_id,
                                            type=str(status)),
-                                       body=msg.encode())
+                                       body=str(msg))
 
         # Send acknowledgement to RabbitMQ (otherwise this task is enqueued again)
         self.channel.basic_ack(delivery_tag=method.delivery_tag)

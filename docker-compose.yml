@@ -19,6 +19,8 @@ services:
     depends_on:
       order-postgres-service:
         condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     command: gunicorn -b 0.0.0.0:5000 app:app
     env_file:
       - env/order_postgres.env
@@ -59,7 +61,7 @@ services:
 
   stock-queue:
     build: ./stock
-    command: python -u consumer.py
+    command: python consumer.py
     depends_on:
       stock-postgres-service:
         condition: service_healthy
@@ -92,7 +94,7 @@ services:
 
   payment-queue:
     build: ./payment
-    command: python -u consumer.py
+    command: python consumer.py
     depends_on:
       stock-postgres-service:
         condition: service_healthy

@@ -3,10 +3,12 @@ import atexit
 import json
 import time
 import logging
-
 import pika
 
 from app import Item, db
+
+logging.basicConfig()
+logging.getLogger().setLevel(logging.DEBUG)
 
 
 class Consumer(object):
@@ -50,7 +52,6 @@ class Consumer(object):
             msg, status = self._subtract_items(items)  # Subtract function here
         elif task == "increaseItems":
             msg, status = self._increase_items(items)  # Increase function here
-        # time.sleep(10)
 
         # Send back a reply if necessary
         if routing is not None:
@@ -59,7 +60,7 @@ class Consumer(object):
                                        properties=pika.BasicProperties(
                                            correlation_id=properties.correlation_id,
                                            type=str(status)),
-                                       body=msg.encode())
+                                       body=str(msg))
 
         # Send acknowledgement to RabbitMQ (otherwise this task is enqueued again)
         self.channel.basic_ack(delivery_tag=method.delivery_tag)

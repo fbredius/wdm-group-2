@@ -1,3 +1,4 @@
+import atexit
 import json
 import logging
 import logging
@@ -31,6 +32,9 @@ app.config['SQLALCHEMY_DATABASE_URI'] = DB_URL
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False  # silence the deprecation warning
 
 db = SQLAlchemy(app)
+
+connection = pika.BlockingConnection(pika.ConnectionParameters(host='rabbitmq'))
+atexit.register(connection.close)
 
 
 class Order(db.Model):
@@ -136,8 +140,7 @@ def checkout(order_id):
         app.logger.debug(f"order already paid")
         return "Order already paid", 400
 
-    # Setup RabbitMQ connection, and producers for the stock and payment requests
-    connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
+    # Setup RabbitMQ producers for the stock and payment requests
     stock_producer = Producer(connection, "stock")
     payment_producer = Producer(connection, "payment")
 
@@ -193,6 +196,5 @@ def checkout(order_id):
     # Close RabbitMQ connection
     stock_producer.close()
     payment_producer.close()
-    connection.close()
 
     return "Order successful", 200
