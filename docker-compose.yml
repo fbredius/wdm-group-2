@@ -61,6 +61,8 @@ services:
     build: ./stock
     command: python -u consumer.py
     depends_on:
+      stock-postgres-service:
+        condition: service_healthy
       rabbitmq:
         condition: service_healthy
     env_file:
@@ -92,6 +94,8 @@ services:
     build: ./payment
     command: python -u consumer.py
     depends_on:
+      stock-postgres-service:
+        condition: service_healthy
       rabbitmq:
         condition: service_healthy
     env_file:

@@ -8,7 +8,7 @@ from flask import request
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.dialects.postgresql import JSON
 
-from consumer import Consumer
+# from consumer import Consumer
 
 app_name = 'stock-service'
 app = Flask(app_name)
@@ -82,31 +82,31 @@ db.create_all()
 db.session.commit()
 
 
-# When a message is received, this function is called
-def callback(ch, method, properties, body):
-    request = body.decode()
-    app.logger.debug("[stock queue] Received order %s", request)
-    type = properties.type
-    response = 400
-    if type == "subtractItems":
-        response = "subtract"  # Subtract function here
-        app.logger.debug("[stock queue] Items subtracted")
-    elif type == "calculatePrice":
-        response = "calculate"  # Calculate function here
-        app.logger.debug("[stock queue] Items price calculated")
-    elif type == "increaseItems":
-        response = "increase"  # Increase function here
-        app.logger.debug("[stock queue] Items increased")
-    ch.basic_publish(exchange='',
-                     routing_key=str(properties.reply_to),
-                     properties=pika.BasicProperties(
-                         correlation_id=properties.correlation_id),
-                     body=str(response))
-    ch.basic_ack(delivery_tag=method.delivery_tag)
-    app.logger.debug("[stock queue] Done")
-
-
-Consumer(callback).run()
+# # When a message is received, this function is called
+# def callback(ch, method, properties, body):
+#     request = body.decode()
+#     app.logger.debug("[stock queue] Received order %s", request)
+#     type = properties.type
+#     response = 400
+#     if type == "subtractItems":
+#         response = "subtract"  # Subtract function here
+#         app.logger.debug("[stock queue] Items subtracted")
+#     elif type == "calculatePrice":
+#         response = "calculate"  # Calculate function here
+#         app.logger.debug("[stock queue] Items price calculated")
+#     elif type == "increaseItems":
+#         response = "increase"  # Increase function here
+#         app.logger.debug("[stock queue] Items increased")
+#     ch.basic_publish(exchange='',
+#                      routing_key=str(properties.reply_to),
+#                      properties=pika.BasicProperties(
+#                          correlation_id=properties.correlation_id),
+#                      body=str(response))
+#     ch.basic_ack(delivery_tag=method.delivery_tag)
+#     app.logger.debug("[stock queue] Done")
+#
+#
+# Consumer(callback).run()
 
 
 @app.post('/item/create/<price>')
