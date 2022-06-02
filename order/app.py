@@ -1,12 +1,11 @@
 import atexit
 import json
 import logging
-import logging
 import os
 import uuid
-
 import pika
 import requests
+
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.dialects.postgresql import ARRAY
@@ -33,7 +32,8 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False  # silence the deprecation 
 
 db = SQLAlchemy(app)
 
-connection = pika.BlockingConnection(pika.ConnectionParameters(host='rabbitmq'))
+# Setup an AMQP connection for this service
+connection = pika.BlockingConnection(pika.ConnectionParameters(host='rabbitmq'))  # Change to environment variable
 atexit.register(connection.close)
 
 
@@ -162,6 +162,8 @@ def checkout(order_id):
     # Handle Transaction
     stock_producer.consume()
     payment_producer.consume()
+
+    # TODO Add time-out
     while (stock_producer.status is None) or (payment_producer.status is None):
         stock_producer.connection.process_data_events()
         payment_producer.connection.process_data_events()

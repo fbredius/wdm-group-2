@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 import atexit
 import json
-import time
 import logging
 import pika
 
@@ -14,7 +13,7 @@ logging.getLogger().setLevel(logging.DEBUG)
 class Consumer(object):
     def __init__(self):
         # Start an AMQP connection
-        host = pika.ConnectionParameters(host='rabbitmq')  # Should be changed to rabbitmq
+        host = pika.ConnectionParameters(host='rabbitmq')  # Change to environment variable
         self.connection = pika.BlockingConnection(host)
         self.channel = self.connection.channel()
 
