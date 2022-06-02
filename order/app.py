@@ -103,7 +103,16 @@ def add_item(order_id, item_id):
 @app.delete('/removeItem/<order_id>/<item_id>')
 def remove_item(order_id, item_id):
     order = Order.query.get_or_404(order_id)
+
+    # Remove item from order.items list
     order.items.remove(item_id)
+    flag_modified(order, "items")
+
+    # Decrease total cost of order
+    item = requests.get(f"{stock_url}/stock/find/{item_id}").json()
+    order.total_cost -= item.price
+    flag_modified(order, "total_cost")
+
     db.session.add(order)
     db.session.commit()
     return "Item removed from order", 200
