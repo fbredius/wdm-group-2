@@ -9,7 +9,8 @@ from app import User, Payment, construct_payment_id, db
 
 
 class Consumer(object):
-    def __init__(self, callback=None):
+    def __init__(self):
+        # Start an AMQP connection
         host = pika.ConnectionParameters(host='rabbitmq')  # Should be changed to rabbitmq
         self.connection = pika.BlockingConnection(host)
         self.channel = self.connection.channel()
@@ -25,6 +26,13 @@ class Consumer(object):
         self.channel.basic_consume(queue=self.queue, on_message_callback=self.callback)
 
     def callback(self, ch, method, properties, body):
+        """
+            This function is called when a message is consumed from the payment queue
+        :param ch: channel
+        :param method: method
+        :param properties: properties (needed for the reply_to queue and task to execute)
+        :param body: request body
+        """
         # request = json.loads(body.decode())
         # Read the request and task to do
         request = body.decode()
@@ -48,21 +56,27 @@ class Consumer(object):
 
         # Send back a reply if necessary
         if routing is not None:
-            ch.basic_publish(exchange='',
+            self.channel.basic_publish(exchange='',
                              routing_key=str(routing),
                              properties=pika.BasicProperties(
                                  correlation_id=properties.correlation_id,
                                  type=str(res)),
                              body=str(msg))
 
-        ch.basic_ack(delivery_tag=method.delivery_tag)
+        self.channel.basic_ack(delivery_tag=method.delivery_tag)
         print("[payment queue] Done")
 
     def run(self):
+        """
+            This function is called to start consuming messages from the payment queue
+        """
         print("Start consuming payment queue")
         self.channel.start_consuming()
 
     def close(self):
+        """
+            Close the channel and connection after use
+        """
         print("Closing AMQP connection")
         self.channel.close()
         self.connection.close()
