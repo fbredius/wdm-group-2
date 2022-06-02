@@ -83,8 +83,16 @@ def add_item(order_id, item_id):
     app.logger.debug(f"Adding item to {order_id = }, {item_id =}")
     order = Order.query.get_or_404(order_id)
     app.logger.debug(f"before {order.items = }")
+
+    # Add item to order.items list
     order.items.append(item_id)
     flag_modified(order, "items")
+
+    # Increase total cost of order
+    item = requests.get(f"{stock_url}/stock/find/{item_id}").json()
+    order.total_cost += item.price
+    flag_modified(order, "total_cost")
+
     db.session.merge(order)
     db.session.flush()
     db.session.commit()
@@ -130,18 +138,10 @@ def checkout(order_id):
         "item_ids": order.items
     })
 
-    # ----------------- This block is currently synchronous ----------- #
-    # Get Total Price, needed to handle Payment
-    calculate_price_response = requests.post(f"{stock_url}/calculatePrice", json={
-        "item_ids": order.items
-    })
-    total_price = calculate_price_response.json()['total_price']
-
     # Handle Payment
-    payment_request_url = f"{payment_url}/pay/{order.user_id}/{order.id}/{total_price}"
-    app.logger.debug(f"requesting payment for {total_price} to {payment_request_url}")
+    payment_request_url = f"{payment_url}/pay/{order.user_id}/{order.id}/{order.total_cost}"
+    app.logger.debug(f"requesting payment for {order.total_cost} to {payment_request_url}")
     payment_response = requests.post(payment_request_url)
-    # ---------------------------------------------------------------- #
 
     # Handle Transaction
     if not (200 <= payment_response.status_code < 300):
@@ -155,6 +155,10 @@ def checkout(order_id):
         return payment_response.text, 400
 
     if not (200 <= stock_response.status_code < 300):
+        # Rollback Payment if stock fails
+        if 200 <= payment_response.status_code < 300:
+            requests.post(f"{payment_url}/cancel/{order.user_id}/{order.id}")
+
         app.logger.debug(f"stock response code not success, {stock_response.text}")
         return stock_response.text, 400
     else:
