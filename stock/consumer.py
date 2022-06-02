@@ -2,6 +2,7 @@
 import atexit
 import json
 import time
+import logging
 
 import pika
 
@@ -37,107 +38,97 @@ class Consumer(object):
         request = body.decode()
         routing = properties.reply_to
         task = properties.type
-        print("[stock queue] Received order: ", request)
-        res = 400
-        msg = "Stock task {} has not been processed".format(request)
+
+        # Set message en status code
+        status = 400
+        msg = "Stock task {} has not been processed".format(task)
 
         # Execute the task
+        logging.debug(f"[stock queue] Executing task: {task =}")
+        items = json.loads(request)
         if task == "subtractItems":
-            # msg, res = subtract_items(request)  # Subtract function here
-            res = 200
-            msg = "stock subtracted"
-            print("[stock queue] Items subtracted")
+            msg, status = self._subtract_items(items)  # Subtract function here
         elif task == "increaseItems":
-            # msg, res = increase_items(request)  # Increase function here
-            res = 200
-            msg = "stock increased"
-            print("[stock queue] Items increased")
-        elif task == "calculatePrice":
-            # msg, res = calculate_price(request)  # Calculate function here
-            res = 200
-            msg = json.dumps({"total_price": 10})
-            print("[stock queue] Items price calculated")
-        time.sleep(10)
+            msg, status = self._increase_items(items)  # Increase function here
+        # time.sleep(10)
 
         # Send back a reply if necessary
         if routing is not None:
             self.channel.basic_publish(exchange='',
-                             routing_key=str(routing),
-                             properties=pika.BasicProperties(
-                                 correlation_id=properties.correlation_id,
-                                 type=str(res)),
-                             body=str(msg))
+                                       routing_key=str(routing),
+                                       properties=pika.BasicProperties(
+                                           correlation_id=properties.correlation_id,
+                                           type=str(status)),
+                                       body=msg.encode())
+
+        # Send acknowledgement to RabbitMQ (otherwise this task is enqueued again)
         self.channel.basic_ack(delivery_tag=method.delivery_tag)
-        print("[stock queue] Done")
+        logging.debug(f"[stock queue] Done")
 
     def run(self):
         """
             This function is called to start consuming messages from the stock queue
         """
-        print("Start consuming stock queue")
+        logging.debug("Start consuming stock queue")
         self.channel.start_consuming()
 
     def close(self):
         """
             Close the channel and connection after use
         """
-        print("Closing AMQP connection")
+        logging.debug("Closing AMQP connection")
         self.channel.close()
         self.connection.close()
 
+    @staticmethod
+    def _subtract_items(item_ids):
+        logging.debug(f"Subtract the items for request:")
+        logging.debug(f"{item_ids =}")
 
-def subtract_items(item_ids):
-    # Subtracts stock of all items by 1
-    # TODO Check if item is in stock
-    items = db.session.query(Item).filter(
-        Item.id.in_(item_ids)
-    )
-    print(f"items= {items}")
+        # Subtracts stock of all items by 1
+        items = db.session.query(Item).filter(
+            Item.id.in_(item_ids['item_ids'])
+        )
+        logging.debug(f"items= {items}")
 
-    item: Item
-    for item in items:
-        item.stock -= 1
-        db.session.add(item)
+        item: Item
+        for item in items:
+            # Return 400 and do not commit when item is out of stock
+            if item.stock < 1:
+                logging.debug(f"Not enough stock")
+                return "not enough stock", 400
 
-    db.session.commit()
+            item.stock -= 1
+            db.session.add(item)
 
-    return "stock subtracted", 200
+        db.session.commit()
 
+        return "stock subtracted", 200
 
-def increase_items(item_ids):
-    """
-    This is a rollback function. Following the SAGA pattern.
-    :return:
-    """
-    # Increases stock of all items by 1
-    items = db.session.query(Item).filter(
-        Item.id.in_(item_ids)
-    )
-    print(f"items= {items}")
+    @staticmethod
+    def _increase_items(item_ids):
+        """
+            This is a rollback function. Following the SAGA pattern.
+            :return:
+            """
+        logging.debug(f"Increase the items for request:")
+        logging.debug(f"{item_ids =}")
 
-    item: Item
-    for item in items:
-        item.stock += 1
-        db.session.add(item)
+        # Increases stock of all items by 1
+        items = db.session.query(Item).filter(
+            Item.id.in_(item_ids['item_ids'])
+        )
+        logging.debug(f"items= {items}")
 
-    db.session.commit()
+        item: Item
+        for item in items:
+            item.stock += 1
+            db.session.add(item)
 
-    return "stock increased", 200
+        db.session.commit()
 
+        return "stock increased", 200
 
-def calculate_price(item_ids):
-    items = db.session.query(Item).filter(
-        Item.id.in_(item_ids)
-    )
-
-    total_price = sum(item.price for item in items)
-
-    return {"total_price": total_price}, 200
-
-
-# if __name__ == '__main__':
-#     consumer = Consumer()
-#     consumer.run()
 
 consumer = Consumer()
 consumer.run()

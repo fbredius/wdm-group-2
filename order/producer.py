@@ -85,6 +85,7 @@ if __name__ == '__main__':
     # Set up a producer (channel) for each queue to send a message to
     producer1 = Producer(connection, "stock")
     producer2 = Producer(connection, "payment")
+    producer3 = Producer(connection, "payment")
     # print(json.loads(producer.publish("subtractItems", "ORDER 1").decode())["total_price"])
     # print(json.loads(producer.publish("increaseItems", "ORDER 2").decode())["total_price"])
     # print(producer1.publish("ORDER 1", "subtractItems").decode())
@@ -94,9 +95,12 @@ if __name__ == '__main__':
     producer1.publish("ORDER 12", "subtractItems", reply=True)
     producer2.publish("ORDER 12", "pay", reply=True)
 
+    producer3.publish("ORDER 222", "notPay", reply=True)
+
     # At the end of an order, consume the queues for the responses
     producer1.consume()
     producer2.consume()
+    producer3.consume()
     print("Waiting for response...")
     timeout = time.time() + 20
     while (producer1.status is None or producer2.status is None) and (time.time() < timeout):
@@ -105,7 +109,13 @@ if __name__ == '__main__':
         time.sleep(1)
     print(producer1.status, producer1.response.decode())
     print(producer2.status, producer2.response.decode())
+    timeout = time.time() + 20
+    while producer3.status is None and (time.time() < timeout):
+        producer3.connection.process_data_events()
+        time.sleep(1)
+    print(producer3.status, producer3.response.decode())
     producer1.close()
     producer2.close()
+    producer3.close()
     connection.close()
 

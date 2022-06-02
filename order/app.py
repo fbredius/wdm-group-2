@@ -1,14 +1,17 @@
+import json
 import logging
 import logging
 import os
 import uuid
 
+import pika
 import requests
 from flask import Flask
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.types import String, Float, Boolean
+from producer import Producer
 
 
 app_name = 'order-service'
@@ -133,38 +136,63 @@ def checkout(order_id):
         app.logger.debug(f"order already paid")
         return "Order already paid", 400
 
+    # Setup RabbitMQ connection, and producers for the stock and payment requests
+    connection = pika.BlockingConnection(pika.ConnectionParameters(host='localhost'))
+    stock_producer = Producer(connection, "stock")
+    payment_producer = Producer(connection, "payment")
+
     # Subtract Stock
     app.logger.debug(f"sending request to stock-service at {stock_url} with order: {order.as_dict()}")
-    stock_response = requests.post(f"{stock_url}/subtractItems", json={
-        "item_ids": order.items
-    })
+    # stock_response = requests.post(f"{stock_url}/subtractItems", json={
+    #     "item_ids": order.items
+    # })
+    stock_body = json.dumps({"item_ids": order.Items})
+    stock_producer.publish(stock_body, "subtractItems", reply=True)
 
     # Handle Payment
-    payment_request_url = f"{payment_url}/pay/{order.user_id}/{order.id}/{order.total_cost}"
-    app.logger.debug(f"requesting payment for {order.total_cost} to {payment_request_url}")
-    payment_response = requests.post(payment_request_url)
+    # payment_request_url = f"{payment_url}/pay/{order.user_id}/{order.id}/{order.total_cost}"
+    app.logger.debug(f"requesting payment for {order.total_cost}")  # to {payment_request_url}")
+    # payment_response = requests.post(payment_request_url)
+    payment_body = json.dumps({"user_id": order.user_id, "order_id": order.id, "total_cost": order.total_cost})
+    payment_producer.publish(payment_body, "pay", reply=True)
 
     # Handle Transaction
-    if not (200 <= payment_response.status_code < 300):
+    stock_producer.consume()
+    payment_producer.consume()
+    while (stock_producer.status is None) or (payment_producer.status is None):
+        stock_producer.connection.process_data_events()
+        payment_producer.connection.process_data_events()
+
+    if not (200 <= int(payment_producer.status) < 300):
         # Rollback Stock subtraction if payment fails
-        if 200 <= stock_response.status_code < 300:
-            requests.post(f"{stock_url}/increaseItems", json={
-                "item_ids": order.items
-            })
+        if 200 <= int(stock_producer.status) < 300:
+            # requests.post(f"{stock_url}/increaseItems", json={
+            #     "item_ids": order.items
+            # })
+            stock_producer.publish(stock_body, "increaseItems", reply=False)
 
-        app.logger.debug(f"payment response code not success, {payment_response.text}")
-        return payment_response.text, 400
+        msg = payment_producer.response.decode()
+        app.logger.debug(f"payment response code not success, {msg}")
+        return msg, 400
 
-    if not (200 <= stock_response.status_code < 300):
+    if not (200 <= int(stock_producer.status) < 300):
         # Rollback Payment if stock fails
-        if 200 <= payment_response.status_code < 300:
+        if 200 <= int(payment_producer.status) < 300:
             requests.post(f"{payment_url}/cancel/{order.user_id}/{order.id}")
+            payment_producer.publish(payment_body, "cancel", reply=False)
 
-        app.logger.debug(f"stock response code not success, {stock_response.text}")
-        return stock_response.text, 400
+        msg = stock_producer.response.decode()
+        app.logger.debug(f"stock response code not success, {msg}")
+        return msg, 400
     else:
         order.paid = True
         db.session.add(order)
         db.session.commit()
     app.logger.debug(f"order successful")
+
+    # Close RabbitMQ connection
+    stock_producer.close()
+    payment_producer.close()
+    connection.close()
+
     return "Order successful", 200
