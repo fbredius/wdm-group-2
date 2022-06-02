@@ -5,6 +5,7 @@ import uuid
 from flask import Flask
 from flask import request
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import CheckConstraint
 
 app_name = 'stock-service'
 app = Flask(app_name)
@@ -30,6 +31,9 @@ class Item(db.Model):
     id = db.Column(db.String, primary_key=True)
     price = db.Column(db.Float, unique=False, nullable=False)
     stock = db.Column(db.Integer, unique=False, nullable=False)
+    __table_args__ = (
+        CheckConstraint(stock >= 0, name='check_stock_positive'), {}
+    )
 
     def __init__(self, id, price, stock):
         self.id = id
