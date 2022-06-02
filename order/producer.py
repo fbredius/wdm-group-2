@@ -1,5 +1,7 @@
 #!/usr/bin/env python
 import uuid
+import time
+
 import pika
 
 class Producer(object):
@@ -24,17 +26,21 @@ class Producer(object):
             self.response = body
             self.status = props.type
 
-    def publish(self, body, type=None):
+    def publish(self, body, type=None, reply=False):
+        # TODO Set priority for rollback higher then for normal transactions
         self.response = None
         self.status = None
+        queue = None
         self.corr_id = str(uuid.uuid4())
+        if reply:
+            queue = self.callback_queue
         self.channel.basic_publish(
             exchange='',
             routing_key=self.queue,
             body=body,
             properties=pika.BasicProperties(
                   delivery_mode=pika.spec.PERSISTENT_DELIVERY_MODE,
-                  reply_to=self.callback_queue,
+                  reply_to=queue,
                   correlation_id=self.corr_id,
                   type=type
             )
@@ -57,14 +63,16 @@ if __name__ == '__main__':
     # print(json.loads(producer.publish("increaseItems", "ORDER 2").decode())["total_price"])
     # print(producer1.publish("ORDER 1", "subtractItems").decode())
     # print(producer2.publish("PAYMENT 1").decode())
-    producer1.publish("ORDER 12", "subtractItems")
-    producer2.publish("ORDER 12", "pay")
+    producer1.publish("ORDER 12", "subtractItems", reply=True)
+    producer2.publish("ORDER 12", "pay", reply=True)
     producer1.consume()
     producer2.consume()
     print("Waiting for response...")
-    while (producer1.status is None) or (producer2.status is None):
+    timeout = time.time() + 20
+    while (producer1.status is None or producer2.status is None) and (time.time() < timeout):
         producer1.connection.process_data_events()
         producer2.connection.process_data_events()
+        time.sleep(1)
     print(producer1.status, producer1.response.decode())
     print(producer2.status, producer2.response.decode())
     producer1.close()

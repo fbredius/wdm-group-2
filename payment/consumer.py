@@ -28,6 +28,7 @@ class Consumer(object):
         # request = json.loads(body.decode())
         # Read the request and task to do
         request = body.decode()
+        routing = properties.reply_to
         task = properties.type
         print("[payment queue] Received payment request: ", request)
         res = 400
@@ -45,13 +46,15 @@ class Consumer(object):
         # msg, res = remove_credit(str(request["user"]), str(request["order"]), float(request["amount"]))
         time.sleep(5)
 
-        # Send back a reply
-        ch.basic_publish(exchange='',
-                         routing_key=str(properties.reply_to),
-                         properties=pika.BasicProperties(
-                             correlation_id=properties.correlation_id,
-                             type=str(res)),
-                         body=str(msg))
+        # Send back a reply if necessary
+        if routing is not None:
+            ch.basic_publish(exchange='',
+                             routing_key=str(routing),
+                             properties=pika.BasicProperties(
+                                 correlation_id=properties.correlation_id,
+                                 type=str(res)),
+                             body=str(msg))
+
         ch.basic_ack(delivery_tag=method.delivery_tag)
         print("[payment queue] Done")
 
@@ -63,6 +66,7 @@ class Consumer(object):
         print("Closing AMQP connection")
         self.channel.close()
         self.connection.close()
+
 
 def remove_credit(user_id: str, order_id: str, amount: float):
     user = User.query.get_or_404(user_id)

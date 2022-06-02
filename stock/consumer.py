@@ -27,6 +27,7 @@ class Consumer(object):
     def callback(self, ch, method, properties, body):
         # Read the request and task to do
         request = body.decode()
+        routing = properties.reply_to
         task = properties.type
         print("[stock queue] Received order: ", request)
         res = 400
@@ -50,13 +51,14 @@ class Consumer(object):
             print("[stock queue] Items price calculated")
         time.sleep(10)
 
-        # Send back a reply
-        ch.basic_publish(exchange='',
-                         routing_key=str(properties.reply_to),
-                         properties=pika.BasicProperties(
-                             correlation_id=properties.correlation_id,
-                             type=str(res)),
-                         body=str(msg))
+        # Send back a reply if necessary
+        if routing is not None:
+            ch.basic_publish(exchange='',
+                             routing_key=str(routing),
+                             properties=pika.BasicProperties(
+                                 correlation_id=properties.correlation_id,
+                                 type=str(res)),
+                             body=str(msg))
         ch.basic_ack(delivery_tag=method.delivery_tag)
         print("[stock queue] Done")
 
