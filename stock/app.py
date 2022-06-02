@@ -126,7 +126,6 @@ def subtract_items():
     app.logger.debug(f"{request.json =}")
 
     # Subtracts stock of all items by 1
-    # TODO Check if item is in stock
     items = db.session.query(Item).filter(
         Item.id.in_(request.json['item_ids'])
     )
@@ -134,6 +133,11 @@ def subtract_items():
 
     item: Item
     for item in items:
+        # Return 400 and do not commit when item is out of stock
+        if item.stock < 1:
+            app.logger.debug(f"Not enough stock")
+            return "not enough stock", 400
+
         item.stock -= 1
         db.session.add(item)
 
