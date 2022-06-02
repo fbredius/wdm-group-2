@@ -2,11 +2,9 @@ import logging
 import os
 import uuid
 
-import requests
 from flask import Flask
 from flask import request
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy.dialects.postgresql import JSON
 
 app_name = 'stock-service'
 app = Flask(app_name)
@@ -24,31 +22,6 @@ app.config['SQLALCHEMY_DATABASE_URI'] = DB_URL
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False  # silence the deprecation warning
 
 db = SQLAlchemy(app)
-
-
-class Order(db.Model):
-    __tablename__ = 'orders'
-
-    id = db.Column(db.String(), primary_key=True)
-    paid = db.Column(db.Boolean, unique=False, nullable=False)
-    user_id = db.Column(db.String(), unique=False, nullable=False)
-    items = db.Column(JSON, unique=False, nullable=True)
-    total_cost = db.Column(db.Float, unique=False, nullable=False)
-
-    def __init__(self, id, paid, items, user_id, total_cost):
-        self.id = id
-        self.paid = paid
-        self.items = items
-        self.user_id = user_id
-        self.total_cost = total_cost
-
-    def __repr__(self):
-        return '<id {}>'.format(self.id)
-
-    def as_dict(self):
-        dct = self.__dict__.copy()
-        dct.pop('_sa_instance_state', None)
-        return dct
 
 
 class Item(db.Model):
