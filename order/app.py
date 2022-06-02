@@ -155,6 +155,10 @@ def checkout(order_id):
         return payment_response.text, 400
 
     if not (200 <= stock_response.status_code < 300):
+        # Rollback Payment if stock fails
+        if 200 <= payment_response.status_code < 300:
+            requests.post(f"{payment_url}/cancel/{order.user_id}/{order.id}")
+
         app.logger.debug(f"stock response code not success, {stock_response.text}")
         return stock_response.text, 400
     else:
