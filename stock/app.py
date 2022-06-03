@@ -1,8 +1,9 @@
 import logging
 import os
 import uuid
+from http import HTTPStatus
 
-from flask import Flask
+from flask import Flask, make_response, jsonify
 from flask import request
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import CheckConstraint
@@ -68,7 +69,7 @@ def create_item(price: float):
     item = Item(idx, float(price), 0)
     db.session.add(item)
     db.session.commit()
-    return {"item_id": idx}, 200
+    return make_response(jsonify({"item_id": idx}), HTTPStatus.OK)
 
 
 @app.get('/find/<item_id>')
@@ -94,7 +95,7 @@ def add_stock(item_id: str, amount: int):
     item.stock = item.stock + int(amount)
     db.session.add(item)
     db.session.commit()
-    return "Stock added", 200
+    return make_response("Stock added", HTTPStatus.OK)
 
 
 @app.post('/subtract/<item_id>/<amount>')
@@ -111,12 +112,12 @@ def remove_stock(item_id: str, amount: int):
         item.stock = item.stock - int(amount)
         db.session.add(item)
         db.session.commit()
-        msg, return_code = "Stock removed", 200
+        response = make_response("Stock removed", HTTPStatus.OK)
     else:
-        msg, return_code = "Not enough stock", 400
+        response = make_response("Not enough stock", HTTPStatus.BAD_REQUEST)
 
-    app.logger.debug(f"Remove stock {item_id=}, {amount=} return = {msg=}, {return_code=}")
-    return msg, return_code
+    app.logger.debug(f"Remove stock {item_id=}, {amount=} return = {response}")
+    return response
 
 
 @app.post('/subtractItems/')
@@ -139,14 +140,14 @@ def subtract_items():
         # Return 400 and do not commit when item is out of stock
         if item.stock < 1:
             app.logger.debug(f"Not enough stock")
-            return "not enough stock", 400
+            return make_response("not enough stock", HTTPStatus.BAD_REQUEST)
 
         item.stock -= 1
         db.session.add(item)
 
     db.session.commit()
 
-    return "stock subtracted", 200
+    return make_response("stock subtracted", HTTPStatus.OK)
 
 
 @app.post('/increaseItems/')
@@ -172,4 +173,4 @@ def increase_items():
 
     db.session.commit()
 
-    return "stock increased", 200
+    return make_response("stock increased", HTTPStatus.OK)

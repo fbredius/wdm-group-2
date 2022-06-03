@@ -2,7 +2,8 @@ import logging
 import os
 import uuid
 
-from flask import Flask
+from http import HTTPStatus
+from flask import Flask, make_response, jsonify
 from flask_sqlalchemy import SQLAlchemy
 
 app_name = 'payment-service'
@@ -81,7 +82,7 @@ def create_user():
     user = User(idx, 0)
     db.session.add(user)
     db.session.commit()
-    return {"user_id": idx}
+    return make_response(jsonify({"user_id": idx}), HTTPStatus.OK)
 
 
 @app.get('/find_user/<user_id>')
@@ -110,7 +111,7 @@ def add_credit(user_id: str, amount: float):
         db.session.commit()
         done = True
 
-    return {"done": done}
+    return make_response(jsonify({"done": done}), HTTPStatus.OK)
 
 
 @app.post('/pay/<user_id>/<order_id>/<amount>')
@@ -128,7 +129,7 @@ def remove_credit(user_id: str, order_id: str, amount: float):
     amount = float(amount)
     if user.credit < amount:
         app.logger.debug(f"{user.credit = } is smaller than {amount =} of credit to remove")
-        msg, status_code = "Not enough credit", 403
+        response = make_response("Not enough credit", HTTPStatus.FORBIDDEN)
     else:
         user.credit = user.credit - amount
         db.session.add(user)
@@ -137,10 +138,10 @@ def remove_credit(user_id: str, order_id: str, amount: float):
         db.session.add(payment)
         app.logger.debug(f"succesfully removed {amount} credit from user with id {user_id}")
         db.session.commit()
-        msg, status_code = "Credit removed", 200
+        response = make_response("Credit removed", HTTPStatus.OK)
 
-    app.logger.debug(f"Remove credit result, {msg = }, {status_code = }")
-    return msg, status_code
+    app.logger.debug(f"Remove credit result, {response}")
+    return response
 
 
 @app.post('/cancel/<user_id>/<order_id>')
@@ -159,10 +160,10 @@ def cancel_payment(user_id: str, order_id: str):
     db.session.add(user)
     db.session.commit()
 
-    msg, status_code = "payment reset", 200
+    response = make_response("payment reset", HTTPStatus.OK)
 
-    app.logger.debug(f"Cancel payment result, {msg = }, {status_code = }")
-    return msg, status_code
+    app.logger.debug(f"Cancel payment result, {response}")
+    return response
 
 
 @app.post('/status/<user_id>/<order_id>')
@@ -180,4 +181,4 @@ def payment_status(user_id: str, order_id: str):
         paid = payment.paid
 
     app.logger.debug(f"Order with order id: {order_id} ({user_id = }, paid status: {paid}")
-    return {"paid": paid}
+    return make_response(jsonify({"paid": paid}), HTTPStatus.OK)

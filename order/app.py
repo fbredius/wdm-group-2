@@ -4,7 +4,8 @@ import os
 import uuid
 
 import requests
-from flask import Flask
+from flask import Flask, make_response, jsonify
+from http import HTTPStatus
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm.attributes import flag_modified
@@ -73,7 +74,7 @@ def create_order(user_id):
     order = Order(idx, False, [], user_id, 0)
     db.session.add(order)
     db.session.commit()
-    return {"order_id": idx}
+    return make_response(jsonify({"order_id": idx}), HTTPStatus.OK)
 
 
 @app.delete('/remove/<order_id>')
@@ -85,7 +86,7 @@ def remove_order(order_id):
     """
     Order.query.filter_by(id=order_id).delete()
     db.session.commit()
-    return
+    return make_response('success', HTTPStatus.OK)
 
 
 @app.post('/addItem/<order_id>/<item_id>')
@@ -113,7 +114,7 @@ def add_item(order_id, item_id):
     db.session.flush()
     db.session.commit()
     app.logger.debug(f"Added item to {order_id = }, {item_id =}, {order.items = }")
-    return "Item added to order", 200
+    return make_response("Item added to order", HTTPStatus.OK)
 
 
 @app.delete('/removeItem/<order_id>/<item_id>')
@@ -137,7 +138,7 @@ def remove_item(order_id, item_id):
 
     db.session.add(order)
     db.session.commit()
-    return "Item removed from order", 200
+    return make_response("Item removed from order", HTTPStatus.OK)
 
 
 @app.get('/find/<order_id>')
@@ -166,7 +167,7 @@ def checkout(order_id):
     app.logger.debug(f"Found order in checkout: {order.as_dict()}")
     if order.paid:
         app.logger.debug(f"order already paid")
-        return "Order already paid", 400
+        return make_response("Order already paid", HTTPStatus.BAD_REQUEST)
 
     # Subtract Stock
     app.logger.debug(f"sending request to stock-service at {stock_url} with order: {order.as_dict()}")
@@ -180,26 +181,26 @@ def checkout(order_id):
     payment_response = requests.post(payment_request_url)
 
     # Handle Transaction
-    if not (200 <= payment_response.status_code < 300):
+    if not (HTTPStatus.OK <= payment_response.status_code < HTTPStatus.MULTIPLE_CHOICES):
         # Rollback Stock subtraction if payment fails
-        if 200 <= stock_response.status_code < 300:
+        if HTTPStatus.OK <= stock_response.status_code < HTTPStatus.MULTIPLE_CHOICES:
             requests.post(f"{stock_url}/increaseItems", json={
                 "item_ids": order.items
             })
 
         app.logger.debug(f"payment response code not success, {payment_response.text}")
-        return payment_response.text, 400
+        return make_response(payment_response.text, HTTPStatus.BAD_REQUEST)
 
-    if not (200 <= stock_response.status_code < 300):
+    if not (HTTPStatus.OK <= stock_response.status_code < HTTPStatus.MULTIPLE_CHOICES):
         # Rollback Payment if stock fails
-        if 200 <= payment_response.status_code < 300:
+        if HTTPStatus.OK <= payment_response.status_code < HTTPStatus.MULTIPLE_CHOICES:
             requests.post(f"{payment_url}/cancel/{order.user_id}/{order.id}")
 
         app.logger.debug(f"stock response code not success, {stock_response.text}")
-        return stock_response.text, 400
+        return make_response(stock_response.text, HTTPStatus.BAD_REQUEST)
     else:
         order.paid = True
         db.session.add(order)
         db.session.commit()
     app.logger.debug(f"order successful")
-    return "Order successful", 200
+    return make_response("Order successful", HTTPStatus.OK)
