@@ -67,6 +67,7 @@ def create_item(price: float):
     """
     idx = str(uuid.uuid4())
     item = Item(idx, float(price), 0)
+    app.logger.debug(f"Adding item {item.as_dict()} to db")
     db.session.add(item)
     db.session.commit()
     return make_response(jsonify({"item_id": idx}), HTTPStatus.OK)
@@ -127,27 +128,30 @@ def subtract_items():
     Pass in an 'items_ids" array as JSON in the POST request.
     :return:
     """
-    app.logger.debug(f"Subtract the items for request:")
-    app.logger.debug(f"{request.json =}")
+    app.logger.debug(f"Subtract the items for request: {request.json =}")
+    item_ids = request.json['item_ids']
+    if any(item_ids):
+        items = db.session.query(Item).filter(
+            Item.id.in_(request.json['item_ids'])
+        )
 
-    items = db.session.query(Item).filter(
-        Item.id.in_(request.json['item_ids'])
-    )
-    app.logger.debug(f"items= {items}")
+        item: Item
+        for item in items:
+            # Return 400 and do not commit when item is out of stock
+            if item.stock < 1:
+                app.logger.debug(f"Not enough stock")
+                return make_response("not enough stock", HTTPStatus.BAD_REQUEST)
 
-    item: Item
-    for item in items:
-        # Return 400 and do not commit when item is out of stock
-        if item.stock < 1:
-            app.logger.debug(f"Not enough stock")
-            return make_response("not enough stock", HTTPStatus.BAD_REQUEST)
+            item.stock -= 1
+            db.session.add(item)
 
-        item.stock -= 1
-        db.session.add(item)
+        db.session.commit()
+        response = make_response("stock subtracted", HTTPStatus.OK)
+    else:
+        app.logger.warning("Items subtract call with no items")
+        response = make_response("No items in request", HTTPStatus.OK)
 
-    db.session.commit()
-
-    return make_response("stock subtracted", HTTPStatus.OK)
+    return response
 
 
 @app.post('/increaseItems/')
@@ -158,8 +162,7 @@ def increase_items():
     Pass in an 'items_ids" array as JSON in the POST request.
     :return:
     """
-    app.logger.debug(f"Increase the items for request:")
-    app.logger.debug(f"{request.json =}")
+    app.logger.debug(f"Increase the items for request: {request.json =}")
 
     items = db.session.query(Item).filter(
         Item.id.in_(request.json['item_ids'])

@@ -1,8 +1,8 @@
 import logging
 import os
 import uuid
-
 from http import HTTPStatus
+
 from flask import Flask, make_response, jsonify
 from flask_sqlalchemy import SQLAlchemy
 
@@ -125,7 +125,7 @@ def remove_credit(user_id: str, order_id: str, amount: float):
     :return:
     """
     user = User.query.get_or_404(user_id)
-    app.logger.debug(f"removing credit from user: {user.__dict__ =}")
+    app.logger.debug(f"removing credit from user: {user.as_dict() =}")
     amount = float(amount)
     if user.credit < amount:
         app.logger.debug(f"{user.credit = } is smaller than {amount =} of credit to remove")

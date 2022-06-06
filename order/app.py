@@ -1,11 +1,10 @@
 import logging
-import logging
 import os
 import uuid
+from http import HTTPStatus
 
 import requests
 from flask import Flask, make_response, jsonify
-from http import HTTPStatus
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm.attributes import flag_modified
@@ -106,8 +105,8 @@ def add_item(order_id, item_id):
     flag_modified(order, "items")
 
     # Increase total cost of order
-    item = requests.get(f"{stock_url}/stock/find/{item_id}").json()
-    order.total_cost += item.price
+    item = requests.get(f"{stock_url}/find/{item_id}").json()
+    order.total_cost += item['price']
     flag_modified(order, "total_cost")
 
     db.session.merge(order)
@@ -132,8 +131,8 @@ def remove_item(order_id, item_id):
     flag_modified(order, "items")
 
     # Decrease total cost of order
-    item = requests.get(f"{stock_url}/stock/find/{item_id}").json()
-    order.total_cost -= item.price
+    item = requests.get(f"{stock_url}/find/{item_id}").json()
+    order.total_cost -= item['price']
     flag_modified(order, "total_cost")
 
     db.session.add(order)
