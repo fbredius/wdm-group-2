@@ -5,6 +5,7 @@ from http import HTTPStatus
 
 from flask import Flask, make_response, jsonify
 from flask_sqlalchemy import SQLAlchemy
+from sqlalchemy import CheckConstraint
 
 app_name = 'payment-service'
 app = Flask(app_name)
@@ -22,11 +23,20 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False  # silence the deprecation 
 db = SQLAlchemy(app)
 
 
+def recreate_tables():
+    db.drop_all()
+    db.create_all()
+    db.session.commit()
+
+
 class User(db.Model):
     __tablename__ = 'users'
 
     id = db.Column(db.String(), primary_key=True)
     credit = db.Column(db.Float, unique=False, nullable=False)
+    __table_args__ = (
+        CheckConstraint(credit >= 0, name='check_credit_positive'), {}
+    )
 
     def __init__(self, id, credit):
         self.id = id
@@ -182,3 +192,8 @@ def payment_status(user_id: str, order_id: str):
 
     app.logger.debug(f"Order with order id: {order_id} ({user_id = }, paid status: {paid}")
     return make_response(jsonify({"paid": paid}), HTTPStatus.OK)
+
+
+@app.delete('/clear_tables')
+def clear_tables():
+    recreate_tables()

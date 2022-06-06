@@ -62,6 +62,12 @@ db.create_all()
 db.session.commit()
 
 
+def recreate_tables():
+    db.drop_all()
+    db.create_all()
+    db.session.commit()
+
+
 @app.post('/create/<user_id>')
 def create_order(user_id):
     """
@@ -203,3 +209,8 @@ def checkout(order_id):
         db.session.commit()
     app.logger.debug(f"order successful")
     return make_response("Order successful", HTTPStatus.OK)
+
+
+@app.delete('/clear_tables')
+def clear_tables():
+    recreate_tables()

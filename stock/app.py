@@ -50,9 +50,15 @@ class Item(db.Model):
         return dct
 
 
+def recreate_tables():
+    db.drop_all()
+    db.create_all()
+    db.session.commit()
+
+
 if os.environ.get('DOCKER_COMPOSE_RUN') == "True":
     app.logger.info("Clearing all tables as we're running in DOCKER COMPOSE")
-    db.drop_all()
+    recreate_tables()
 
 db.create_all()
 db.session.commit()
@@ -177,3 +183,8 @@ def increase_items():
     db.session.commit()
 
     return make_response("stock increased", HTTPStatus.OK)
+
+
+@app.delete('/clear_tables')
+def clear_tables():
+    recreate_tables()
