@@ -3,10 +3,10 @@ import json
 import logging
 import os
 import uuid
+from http import HTTPStatus
 import pika
 import requests
-
-from flask import Flask
+from flask import Flask, make_response, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm.attributes import flag_modified
@@ -70,24 +70,46 @@ db.create_all()
 db.session.commit()
 
 
+def recreate_tables():
+    db.drop_all()
+    db.create_all()
+    db.session.commit()
+
+
 @app.post('/create/<user_id>')
 def create_order(user_id):
+    """
+    Creates an order for the given user, and returns an order_id
+    :param user_id:
+    :return: the order's id
+    """
     idx = str(uuid.uuid4())
     order = Order(idx, False, [], user_id, 0)
     db.session.add(order)
     db.session.commit()
-    return {"order_id": idx}
+    return make_response(jsonify({"order_id": idx}), HTTPStatus.OK)
 
 
 @app.delete('/remove/<order_id>')
 def remove_order(order_id):
+    """
+    Deletes an order by ID
+    :param order_id:
+    :return:
+    """
     Order.query.filter_by(id=order_id).delete()
     db.session.commit()
-    return
+    return make_response('success', HTTPStatus.OK)
 
 
 @app.post('/addItem/<order_id>/<item_id>')
 def add_item(order_id, item_id):
+    """
+    Adds a given item in the order given
+    :param order_id:
+    :param item_id:
+    :return:
+    """
     app.logger.debug(f"Adding item to {order_id = }, {item_id =}")
     order = Order.query.get_or_404(order_id)
     app.logger.debug(f"before {order.items = }")
@@ -97,28 +119,48 @@ def add_item(order_id, item_id):
     flag_modified(order, "items")
 
     # Increase total cost of order
-    item = requests.get(f"{stock_url}/stock/find/{item_id}").json()
-    order.total_cost += item.price
+    item = requests.get(f"{stock_url}/find/{item_id}").json()
+    order.total_cost += item['price']
     flag_modified(order, "total_cost")
 
     db.session.merge(order)
     db.session.flush()
     db.session.commit()
     app.logger.debug(f"Added item to {order_id = }, {item_id =}, {order.items = }")
-    return "Item added to order", 200
+    return make_response("Item added to order", HTTPStatus.OK)
 
 
 @app.delete('/removeItem/<order_id>/<item_id>')
 def remove_item(order_id, item_id):
+    """
+    Removes the given item from the given order
+    :param order_id:
+    :param item_id:
+    :return:
+    """
     order = Order.query.get_or_404(order_id)
+
+    # Remove item from order.items list
     order.items.remove(item_id)
+    flag_modified(order, "items")
+
+    # Decrease total cost of order
+    item = requests.get(f"{stock_url}/find/{item_id}").json()
+    order.total_cost -= item['price']
+    flag_modified(order, "total_cost")
+
     db.session.add(order)
     db.session.commit()
-    return "Item removed from order", 200
+    return make_response("Item removed from order", HTTPStatus.OK)
 
 
 @app.get('/find/<order_id>')
 def find_order(order_id):
+    """
+    Retrieves the information of an order
+    :param order_id:
+    :return: Order { order_id, paid, items, user_id, total_cost }
+    """
     return Order.query.get_or_404(order_id).as_dict()
 
 
@@ -138,7 +180,7 @@ def checkout(order_id):
     app.logger.debug(f"Found order in checkout: {order.as_dict()}")
     if order.paid:
         app.logger.debug(f"order already paid")
-        return "Order already paid", 400
+        return make_response("Order already paid", HTTPStatus.BAD_REQUEST)
 
     # Setup RabbitMQ producers for the stock and payment requests
     stock_producer = Producer(connection, "stock")
@@ -146,16 +188,12 @@ def checkout(order_id):
 
     # Subtract Stock
     app.logger.debug(f"sending request to stock-service at {stock_url} with order: {order.as_dict()}")
-    # stock_response = requests.post(f"{stock_url}/subtractItems", json={
-    #     "item_ids": order.items
-    # })
     stock_body = json.dumps({"item_ids": order.Items})
     stock_producer.publish(stock_body, "subtractItems", reply=True)
 
     # Handle Payment
-    # payment_request_url = f"{payment_url}/pay/{order.user_id}/{order.id}/{order.total_cost}"
-    app.logger.debug(f"requesting payment for {order.total_cost}")  # to {payment_request_url}")
-    # payment_response = requests.post(payment_request_url)
+    payment_request_url = f"{payment_url}/pay/{order.user_id}/{order.id}/{order.total_cost}"
+    app.logger.debug(f"requesting payment for {order.total_cost} to {payment_request_url}")
     payment_body = json.dumps({"user_id": order.user_id, "order_id": order.id, "total_cost": order.total_cost})
     payment_producer.publish(payment_body, "pay", reply=True)
 
@@ -168,27 +206,21 @@ def checkout(order_id):
         stock_producer.connection.process_data_events()
         payment_producer.connection.process_data_events()
 
-    if not (200 <= int(payment_producer.status) < 300):
+    if not (HTTPStatus.OK <= int(payment_producer.status) < HTTPStatus.MULTIPLE_CHOICES):
         # Rollback Stock subtraction if payment fails
-        if 200 <= int(stock_producer.status) < 300:
-            # requests.post(f"{stock_url}/increaseItems", json={
-            #     "item_ids": order.items
-            # })
+        if HTTPStatus.OK <= int(stock_producer.status) < HTTPStatus.MULTIPLE_CHOICES:
             stock_producer.publish(stock_body, "increaseItems", reply=False)
 
-        msg = payment_producer.response.decode()
-        app.logger.debug(f"payment response code not success, {msg}")
-        return msg, 400
+        app.logger.debug(f"payment response code not success, {payment_producer.response.decode()}")
+        return make_response(payment_producer.response.decode(), HTTPStatus.BAD_REQUEST)
 
-    if not (200 <= int(stock_producer.status) < 300):
+    if not (HTTPStatus.OK <= int(stock_producer.status) < HTTPStatus.MULTIPLE_CHOICES):
         # Rollback Payment if stock fails
-        if 200 <= int(payment_producer.status) < 300:
-            requests.post(f"{payment_url}/cancel/{order.user_id}/{order.id}")
+        if HTTPStatus.OK <= int(payment_producer.status) < HTTPStatus.MULTIPLE_CHOICES:
             payment_producer.publish(payment_body, "cancel", reply=False)
 
-        msg = stock_producer.response.decode()
-        app.logger.debug(f"stock response code not success, {msg}")
-        return msg, 400
+        app.logger.debug(f"stock response code not success, {stock_producer.response.decode()}")
+        return make_response(stock_producer.response.decode(), HTTPStatus.BAD_REQUEST)
     else:
         order.paid = True
         db.session.add(order)
@@ -199,4 +231,9 @@ def checkout(order_id):
     stock_producer.close()
     payment_producer.close()
 
-    return "Order successful", 200
+    return make_response("Order successful", HTTPStatus.OK)
+
+
+@app.delete('/clear_tables')
+def clear_tables():
+    recreate_tables()
