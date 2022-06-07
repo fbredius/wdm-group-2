@@ -2,9 +2,9 @@ apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
   name: app-ingress-service
- annotations:
-   kubernetes.io/ingress.class: nginx
-   nginx.ingress.kubernetes.io/rewrite-target: /$1
+  annotations:
+    kubernetes.io/ingress.class: nginx
+    nginx.ingress.kubernetes.io/rewrite-target: /$1
 spec:
  rules:
    - http:
@@ -30,29 +30,29 @@ spec:
               name: payment-service
               port:
                 number: 5000
----
-apiVersion: networking.k8s.io/v1
-kind: Ingress
-metadata:
-  name: monitor-ingress-service
-  annotations:
-    kubernetes.io/ingress.class: nginx
-    nginx.ingress.kubernetes.io/rewrite-target: /$2
-spec:
-  rules:
-    - http:
-        paths:
-          - path: /prometheus(/|$)(.*)
-            pathType: Prefix
-            backend:
-              service:
-                name: promstack-kube-prometheus-prometheus
-                port:
-                  number: 9090
-          - path: /grafana(/|$)(.*)
-            pathType: Prefix
-            backend:
-              service:
-                name: promstack-grafana
-                port:
-                  number: 3000
+#---
+#apiVersion: networking.k8s.io/v1
+#kind: Ingress
+#metadata:
+#  name: monitor-ingress-service
+#  annotations:
+#    kubernetes.io/ingress.class: nginx
+#    nginx.ingress.kubernetes.io/rewrite-target: /$2
+#spec:
+#  rules:
+#    - http:
+#        paths:
+#          - path: /prometheus(/|$)(.*)
+#            pathType: Prefix
+#            backend:
+#              service:
+#                name: promstack-kube-prometheus-prometheus
+#                port:
+#                  number: 9090
+##          - path: /grafana(/|$)(.*)
+##            pathType: Prefix
+##            backend:
+##              service:
+##                name: promstack-grafana
+##                port:
+#                  number: 3000

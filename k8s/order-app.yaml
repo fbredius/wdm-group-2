@@ -77,4 +77,4 @@ spec:
   endpoints:
     - targetPort: 5000
       path: "/metrics"
-      interval: 10s
+      interval: 5s

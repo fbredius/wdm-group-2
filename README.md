@@ -122,6 +122,11 @@ ingress to the cluster.
     - Delete everything that has to do with stock-postgres <br>
       `kubectl delete -f k8s/stock-postgres.yaml && kubectl delete pvc -l app=stock-postgres-service`
 
+- Accesing grafana:
+    - kubectl port-forward svc/kube-prom-stack-grafana 3000:80
+    - go to localhost:3000
+    - login with uname: admin, password: prom-operator
+
 ## Known issues
 
 1. Postgres replicas fail to start and ask for passwords in the logs. (logs fully filled with 'password:')
