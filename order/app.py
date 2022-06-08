@@ -40,7 +40,7 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False  # silence the deprecation 
 db = SQLAlchemy(app)
 
 # Setup an AMQP connection for this service
-connection = pika.BlockingConnection(pika.ConnectionParameters(host='rabbitmq'))  # Change to environment variable
+connection = pika.BlockingConnection(pika.ConnectionParameters(host='rabbitmq', heartbeat=None))  # Change to environment variable
 atexit.register(connection.close)
 
 PROMETHEUS_MULTIPROC_DIR = os.environ["PROMETHEUS_MULTIPROC_DIR"]
