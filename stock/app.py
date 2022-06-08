@@ -4,6 +4,7 @@ import shutil
 import uuid
 from http import HTTPStatus
 
+import sqlalchemy.exc
 from flask import Flask, make_response, jsonify
 from flask import Response
 from flask import request
@@ -79,7 +80,7 @@ find_item_metric = Summary("find_item", "Summary of /find/<item_id>")
 add_stock_metric = Summary("add_stock", "Summary of /add/<item_id>/<amount>")
 remove_stock_metric = Summary("remove_stock", "/subtract/<item_id>/<amount>")
 increase_items_metric = Summary("increase_items", "/increaseItems/")
-decrease_items_metric = Summary("decrease_items", "/decreaseItems/")
+subtract_items_metric = Summary("decrease_items", "/decreaseItems/")
 
 
 @app.post('/item/create/<price>')
@@ -135,14 +136,14 @@ def remove_stock(item_id: str, amount: int):
     :param amount:
     :return:
     """
-    item = Item.query.get_or_404(item_id)
-    app.logger.debug(f"Attempting to take {amount} from stock of {item.__dict__=}")
-    if item.stock >= int(amount):
-        item.stock = item.stock - int(amount)
-        db.session.add(item)
+    app.logger.debug(f"Attempting to take {amount} from stock of {item_id=}")
+
+    try:
+        Item.query.filter_by(id=item_id).update({Item.stock: Item.stock - amount})
         db.session.commit()
         response = make_response("Stock removed", HTTPStatus.OK)
-    else:
+    except sqlalchemy.exc.IntegrityError:
+        app.logger.debug(f"Violated constraint for item with id: {item_id}")
         response = make_response("Not enough stock", HTTPStatus.BAD_REQUEST)
 
     app.logger.debug(f"Remove stock {item_id=}, {amount=} return = {response}")
@@ -159,23 +160,21 @@ def subtract_items():
     """
     app.logger.debug(f"Subtract the items for request: {request.json =}")
     item_ids = request.json['item_ids']
+    amount = 1
     if any(item_ids):
-        items = db.session.query(Item).filter(
-            Item.id.in_(request.json['item_ids'])
-        )
-
-        item: Item
-        for item in items:
-            # Return 400 and do not commit when item is out of stock
-            if item.stock < 1:
-                app.logger.debug(f"Not enough stock")
-                return make_response("not enough stock", HTTPStatus.BAD_REQUEST)
-
-            item.stock -= 1
-            db.session.add(item)
-
-        db.session.commit()
-        response = make_response("stock subtracted", HTTPStatus.OK)
+        try:
+            items_affected = db.session.query(Item).filter(
+                Item.id.in_(request.json['item_ids'])
+            ).update({Item.stock: Item.stock - amount})
+            db.session.commit()
+        except sqlalchemy.exc.IntegrityError:
+            app.logger.debug(f"Violated constraint for item when subtracting items")
+            response = make_response("Not enough stock", HTTPStatus.BAD_REQUEST)
+        else:
+            if items_affected != len(item_ids):
+                response = make_response("Stock subtracting failed for at least 1 item", HTTPStatus.BAD_REQUEST)
+            else:
+                response = make_response("stock subtracted", HTTPStatus.OK)
     else:
         app.logger.warning("Items subtract call with no items")
         response = make_response("No items in request", HTTPStatus.OK)
@@ -212,6 +211,7 @@ def increase_items():
 @app.delete('/clear_tables')
 def clear_tables():
     recreate_tables()
+    return make_response("tables cleared", HTTPStatus.OK)
 
 
 @app.route("/metrics")

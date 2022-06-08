@@ -123,7 +123,7 @@ ingress to the cluster.
       `kubectl delete -f k8s/stock-postgres.yaml && kubectl delete pvc -l app=stock-postgres-service`
 
 - Accesing grafana:
-    - kubectl port-forward svc/kube-prom-stack-grafana 3000:80
+    - kubectl port-forward svc/promstack-grafana 3000:80
     - go to localhost:3000
     - login with uname: admin, password: prom-operator
 

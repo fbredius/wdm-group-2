@@ -249,6 +249,7 @@ def checkout(order_id):
 @app.delete('/clear_tables')
 def clear_tables():
     recreate_tables()
+    return make_response("tables cleared", HTTPStatus.OK)
 
 
 @app.route("/metrics")
