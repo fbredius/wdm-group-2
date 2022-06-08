@@ -35,6 +35,9 @@ class Consumer(object):
         :param properties: properties (needed for the reply_to queue and task to execute)
         :param body: request body
         """
+
+        self.channel.basic_ack(delivery_tag=method.delivery_tag)
+
         # Read the request and task to do
         request = body.decode()
         routing = properties.reply_to
@@ -65,7 +68,6 @@ class Consumer(object):
                                        body=str(msg))
 
         # Send acknowledgement to RabbitMQ (otherwise this task is enqueued again)
-        self.channel.basic_ack(delivery_tag=method.delivery_tag)
         logging.debug(f"[payment queue] Done")
 
     def run(self):

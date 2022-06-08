@@ -35,6 +35,9 @@ class Consumer(object):
         :param properties: properties (needed for the reply_to queue and task to execute)
         :param body: request body
         """
+        # Send acknowledgement to RabbitMQ (otherwise this task is enqueued again)
+        self.channel.basic_ack(delivery_tag=method.delivery_tag)
+
         # Read the request and task to do
         request = body.decode()
         routing = properties.reply_to
@@ -61,8 +64,6 @@ class Consumer(object):
                                            type=str(status)),
                                        body=str(msg))
 
-        # Send acknowledgement to RabbitMQ (otherwise this task is enqueued again)
-        self.channel.basic_ack(delivery_tag=method.delivery_tag)
         logging.debug(f"[stock queue] Done")
 
     def run(self):
@@ -98,6 +99,7 @@ class Consumer(object):
                 logging.debug(f"Not enough stock")
                 return "not enough stock", 400
 
+            logging.debug("I AM HERE")
             item.stock -= 1
             db.session.add(item)
 
@@ -122,10 +124,20 @@ class Consumer(object):
 
         item: Item
         for item in items:
+            logging.debug(f"before: {item.stock}")
             item.stock += 1
+            logging.debug(f"after: {item.stock}")
             db.session.add(item)
 
         db.session.commit()
+
+        items2 = db.session.query(Item).filter(
+            Item.id.in_(item_ids['item_ids'])
+        )
+
+        logging.debug("CHeck if actually increased")
+        for item in items2:
+            logging.debug(f"Eventually: {item.stock}")
 
         return "stock increased", 200
 
