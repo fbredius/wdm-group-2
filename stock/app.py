@@ -1,8 +1,10 @@
+import os
 import logging
 import os
 import shutil
 import uuid
 from http import HTTPStatus
+from typing import Dict
 
 import sqlalchemy.exc
 from flask import Flask, make_response, jsonify
@@ -10,7 +12,10 @@ from flask import Response
 from flask import request
 from flask_sqlalchemy import SQLAlchemy
 from prometheus_client import CollectorRegistry, multiprocess, generate_latest, CONTENT_TYPE_LATEST, Summary
-from sqlalchemy import CheckConstraint
+from sqlalchemy import CheckConstraint, case
+
+logging.basicConfig()
+logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
 
 app_name = 'stock-service'
 app = Flask(app_name)
@@ -137,16 +142,32 @@ def remove_stock(item_id: str, amount: int):
     :return:
     """
     app.logger.debug(f"Attempting to take {amount} from stock of {item_id=}")
+    return update_stock({item_id: Item.stock - int(amount)})
 
-    try:
-        Item.query.filter_by(id=item_id).update({Item.stock: Item.stock - amount})
-        db.session.commit()
-        response = make_response("Stock removed", HTTPStatus.OK)
-    except sqlalchemy.exc.IntegrityError:
-        app.logger.debug(f"Violated constraint for item with id: {item_id}")
-        response = make_response("Not enough stock", HTTPStatus.BAD_REQUEST)
 
-    app.logger.debug(f"Remove stock {item_id=}, {amount=} return = {response}")
+def update_stock(amounts: Dict[str, int]):
+    if len(amounts) > 0:
+        try:
+            items_affected = db.session.query(Item).filter(
+                Item.id.in_(amounts)
+            ).update({Item.stock: case(
+                amounts,
+                value=Item.id
+            )})
+
+            db.session.commit()
+        except sqlalchemy.exc.IntegrityError:
+            app.logger.debug(f"Violated constraint for item when subtracting items")
+            response = make_response("Not enough stock", HTTPStatus.BAD_REQUEST)
+        else:
+            if items_affected != len(amounts):
+                response = make_response("Stock subtracting failed for at least 1 item", HTTPStatus.BAD_REQUEST)
+            else:
+                response = make_response("stock subtracted", HTTPStatus.OK)
+    else:
+        app.logger.warning("Items subtract call with no items")
+        response = make_response("No items in request", HTTPStatus.OK)
+    app.logger.debug(f"Update stock response {response.response}, : {response.status_code}")
     return response
 
 
@@ -159,27 +180,7 @@ def subtract_items():
     :return:
     """
     app.logger.debug(f"Subtract the items for request: {request.json =}")
-    item_ids = request.json['item_ids']
-    amount = 1
-    if any(item_ids):
-        try:
-            items_affected = db.session.query(Item).filter(
-                Item.id.in_(request.json['item_ids'])
-            ).update({Item.stock: Item.stock - amount})
-            db.session.commit()
-        except sqlalchemy.exc.IntegrityError:
-            app.logger.debug(f"Violated constraint for item when subtracting items")
-            response = make_response("Not enough stock", HTTPStatus.BAD_REQUEST)
-        else:
-            if items_affected != len(item_ids):
-                response = make_response("Stock subtracting failed for at least 1 item", HTTPStatus.BAD_REQUEST)
-            else:
-                response = make_response("stock subtracted", HTTPStatus.OK)
-    else:
-        app.logger.warning("Items subtract call with no items")
-        response = make_response("No items in request", HTTPStatus.OK)
-
-    return response
+    return update_stock({id_: Item.stock - 1 for id_ in request.json['item_ids']})
 
 
 @app.post('/increaseItems/')
@@ -192,20 +193,7 @@ def increase_items():
     :return:
     """
     app.logger.debug(f"Increase the items for request: {request.json =}")
-
-    items = db.session.query(Item).filter(
-        Item.id.in_(request.json['item_ids'])
-    )
-    app.logger.debug(f"items= {items}")
-
-    item: Item
-    for item in items:
-        item.stock += 1
-        db.session.add(item)
-
-    db.session.commit()
-
-    return make_response("stock increased", HTTPStatus.OK)
+    return update_stock({id_: Item.stock + 1 for id_ in request.json['item_ids']})
 
 
 @app.delete('/clear_tables')
