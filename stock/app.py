@@ -4,13 +4,11 @@ import shutil
 import uuid
 from http import HTTPStatus
 
-import requests
-from flask import Flask, Response
 from flask import Flask, make_response, jsonify
+from flask import Response
 from flask import request
 from flask_sqlalchemy import SQLAlchemy
 from prometheus_client import CollectorRegistry, multiprocess, generate_latest, CONTENT_TYPE_LATEST, Summary
-from sqlalchemy.dialects.postgresql import JSON
 from sqlalchemy import CheckConstraint
 
 app_name = 'stock-service'
@@ -80,7 +78,8 @@ create_item_metric = Summary("create_item", "Summary of /item/create/<price> end
 find_item_metric = Summary("find_item", "Summary of /find/<item_id>")
 add_stock_metric = Summary("add_stock", "Summary of /add/<item_id>/<amount>")
 remove_stock_metric = Summary("remove_stock", "/subtract/<item_id>/<amount>")
-checkout_items_metric = Summary("checkout_items", "/checkout/")
+increase_items_metric = Summary("increase_items", "/increaseItems/")
+decrease_items_metric = Summary("decrease_items", "/decreaseItems/")
 
 
 @app.post('/item/create/<price>')
@@ -149,7 +148,9 @@ def remove_stock(item_id: str, amount: int):
     app.logger.debug(f"Remove stock {item_id=}, {amount=} return = {response}")
     return response
 
+
 @app.post('/subtractItems/')
+@subtract_items_metric.time()
 def subtract_items():
     """
     Substracts all items in the list from stock by the amount of 1
@@ -183,6 +184,7 @@ def subtract_items():
 
 
 @app.post('/increaseItems/')
+@increase_items_metric.time()
 def increase_items():
     """
     This is a rollback function. Following the SAGA pattern.

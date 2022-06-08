@@ -5,8 +5,8 @@ import uuid
 from http import HTTPStatus
 
 import requests
-from flask import Flask, Response
 from flask import Flask, make_response, jsonify
+from flask import Response
 from flask_sqlalchemy import SQLAlchemy
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
@@ -81,6 +81,7 @@ def recreate_tables():
     db.drop_all()
     db.create_all()
     db.session.commit()
+
 
 total_time_metric = Histogram("order_time", "Time of all requests in order app")
 create_order_metric = Histogram("create_order", "Histogram of /create/<user_id> endpoint")
