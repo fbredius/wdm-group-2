@@ -5,3 +5,10 @@ resources:
   requests:
     cpu: 500m
     memory: 1Gi
+controller:
+  metrics:
+    enabled: true
+    service:
+      annotations:
+        prometheus.io/port: "10254"
+        prometheus.io/scrape: "true"
