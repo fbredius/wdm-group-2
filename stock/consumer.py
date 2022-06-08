@@ -90,7 +90,6 @@ class Consumer(object):
         items = db.session.query(Item).filter(
             Item.id.in_(item_ids['item_ids'])
         )
-        logging.debug(f"items= {items}")
 
         item: Item
         for item in items:
@@ -99,7 +98,6 @@ class Consumer(object):
                 logging.debug(f"Not enough stock")
                 return "not enough stock", 400
 
-            logging.debug("I AM HERE")
             item.stock -= 1
             db.session.add(item)
 
@@ -120,24 +118,13 @@ class Consumer(object):
         items = db.session.query(Item).filter(
             Item.id.in_(item_ids['item_ids'])
         )
-        logging.debug(f"items= {items}")
 
         item: Item
         for item in items:
-            logging.debug(f"before: {item.stock}")
             item.stock += 1
-            logging.debug(f"after: {item.stock}")
             db.session.add(item)
 
         db.session.commit()
-
-        items2 = db.session.query(Item).filter(
-            Item.id.in_(item_ids['item_ids'])
-        )
-
-        logging.debug("CHeck if actually increased")
-        for item in items2:
-            logging.debug(f"Eventually: {item.stock}")
 
         return "stock increased", 200
 
