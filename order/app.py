@@ -223,7 +223,7 @@ def checkout(order_id):
 
     # Subtract Stock
     app.logger.debug(f"sending request to stock-service at {stock_url} with order: {order.as_dict()}")
-    stock_body = json.dumps({"item_ids": order.Items})
+    stock_body = json.dumps({"item_ids": order.items})
     stock_producer.publish(stock_body, "subtractItems", reply=True)
 
     # Handle Payment
