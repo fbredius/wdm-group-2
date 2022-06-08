@@ -2,6 +2,9 @@ apiVersion: v1
 kind: Service
 metadata:
   name: order-service
+  labels:
+    app: order-service
+    type: app-service
 spec:
   type: ClusterIP
   selector:
@@ -57,3 +60,21 @@ spec:
               value: "order-postgres-service"
             - name: POSTGRES_REPLICA_HOST
               value: "order-postgres-service-replica"
+            - name: PROMETHEUS_MULTIPROC_DIR
+              value: "/tmp/prometheus"
+
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: app-monitor
+  labels:
+    release: promstack
+spec:
+  selector:
+    matchLabels:
+      type: app-service
+  endpoints:
+    - targetPort: 5000
+      path: "/metrics"
+      interval: 5s

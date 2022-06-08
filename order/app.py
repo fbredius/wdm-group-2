@@ -2,12 +2,19 @@ import atexit
 import json
 import logging
 import os
+import shutil
 import uuid
 from http import HTTPStatus
 import pika
 import requests
 from flask import Flask, make_response, jsonify
+from flask import Response
 from flask_sqlalchemy import SQLAlchemy
+from prometheus_client import (
+    CONTENT_TYPE_LATEST,
+    Histogram,
+    generate_latest, CollectorRegistry, multiprocess,
+)
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.types import String, Float, Boolean
@@ -35,6 +42,14 @@ db = SQLAlchemy(app)
 # Setup an AMQP connection for this service
 connection = pika.BlockingConnection(pika.ConnectionParameters(host='rabbitmq'))  # Change to environment variable
 atexit.register(connection.close)
+
+PROMETHEUS_MULTIPROC_DIR = os.environ["PROMETHEUS_MULTIPROC_DIR"]
+# make sure the dir is clean
+shutil.rmtree(PROMETHEUS_MULTIPROC_DIR, ignore_errors=True)
+os.makedirs(PROMETHEUS_MULTIPROC_DIR)
+
+registry = CollectorRegistry()
+multiprocess.MultiProcessCollector(registry)
 
 
 class Order(db.Model):
@@ -76,7 +91,17 @@ def recreate_tables():
     db.session.commit()
 
 
+total_time_metric = Histogram("order_time", "Time of all requests in order app")
+create_order_metric = Histogram("create_order", "Histogram of /create/<user_id> endpoint")
+remove_order_metric = Histogram("remove_order", "Histogram of /remove<order_id>")
+add_item_metric = Histogram("add_item", "Histogram of /removeItem/<order_id>/<item_id>")
+find_order_metric = Histogram("find_order", "Histogram of /find/<order_id>")
+checkout_metric = Histogram("checkout", "Histogram of /checkout/<order_id>")
+
+
 @app.post('/create/<user_id>')
+@create_order_metric.time()
+@total_time_metric.time()
 def create_order(user_id):
     """
     Creates an order for the given user, and returns an order_id
@@ -91,6 +116,8 @@ def create_order(user_id):
 
 
 @app.delete('/remove/<order_id>')
+@remove_order_metric.time()
+@total_time_metric.time()
 def remove_order(order_id):
     """
     Deletes an order by ID
@@ -103,6 +130,8 @@ def remove_order(order_id):
 
 
 @app.post('/addItem/<order_id>/<item_id>')
+@add_item_metric.time()
+@total_time_metric.time()
 def add_item(order_id, item_id):
     """
     Adds a given item in the order given
@@ -131,6 +160,8 @@ def add_item(order_id, item_id):
 
 
 @app.delete('/removeItem/<order_id>/<item_id>')
+@remove_order_metric.time()
+@total_time_metric.time()
 def remove_item(order_id, item_id):
     """
     Removes the given item from the given order
@@ -155,6 +186,8 @@ def remove_item(order_id, item_id):
 
 
 @app.get('/find/<order_id>')
+@find_order_metric.time()
+@total_time_metric.time()
 def find_order(order_id):
     """
     Retrieves the information of an order
@@ -165,6 +198,8 @@ def find_order(order_id):
 
 
 @app.post('/checkout/<order_id>')
+@checkout_metric.time()
+@total_time_metric.time()
 def checkout(order_id):
     """
     Handle the checkout.
@@ -237,3 +272,11 @@ def checkout(order_id):
 @app.delete('/clear_tables')
 def clear_tables():
     recreate_tables()
+    return make_response("tables cleared", HTTPStatus.OK)
+
+
+@app.route("/metrics")
+def metrics():
+    data = generate_latest(registry)
+    app.logger.debug(f"Metrics, returning: {data}")
+    return Response(data, mimetype=CONTENT_TYPE_LATEST)

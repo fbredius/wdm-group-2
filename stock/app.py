@@ -1,12 +1,21 @@
+import os
 import logging
 import os
+import shutil
 import uuid
 from http import HTTPStatus
+from typing import Dict
 
+import sqlalchemy.exc
 from flask import Flask, make_response, jsonify
+from flask import Response
 from flask import request
 from flask_sqlalchemy import SQLAlchemy
-from sqlalchemy import CheckConstraint
+from prometheus_client import CollectorRegistry, multiprocess, generate_latest, CONTENT_TYPE_LATEST, Summary
+from sqlalchemy import CheckConstraint, case
+
+logging.basicConfig()
+logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
 
 app_name = 'stock-service'
 app = Flask(app_name)
@@ -24,6 +33,14 @@ app.config['SQLALCHEMY_DATABASE_URI'] = DB_URL
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False  # silence the deprecation warning
 
 db = SQLAlchemy(app)
+
+PROMETHEUS_MULTIPROC_DIR = os.environ["PROMETHEUS_MULTIPROC_DIR"]
+# make sure the dir is clean
+shutil.rmtree(PROMETHEUS_MULTIPROC_DIR, ignore_errors=True)
+os.makedirs(PROMETHEUS_MULTIPROC_DIR)
+
+registry = CollectorRegistry()
+multiprocess.MultiProcessCollector(registry)
 
 
 class Item(db.Model):
@@ -63,8 +80,16 @@ if os.environ.get('DOCKER_COMPOSE_RUN') == "True":
 db.create_all()
 db.session.commit()
 
+create_item_metric = Summary("create_item", "Summary of /item/create/<price> endpoint")
+find_item_metric = Summary("find_item", "Summary of /find/<item_id>")
+add_stock_metric = Summary("add_stock", "Summary of /add/<item_id>/<amount>")
+remove_stock_metric = Summary("remove_stock", "/subtract/<item_id>/<amount>")
+increase_items_metric = Summary("increase_items", "/increaseItems/")
+subtract_items_metric = Summary("decrease_items", "/decreaseItems/")
+
 
 @app.post('/item/create/<price>')
+@create_item_metric.time()
 def create_item(price: float):
     """
     Adds an item and its price
@@ -80,6 +105,7 @@ def create_item(price: float):
 
 
 @app.get('/find/<item_id>')
+@find_item_metric.time()
 def find_item(item_id: str):
     """
     Return an item's availability and price
@@ -91,6 +117,7 @@ def find_item(item_id: str):
 
 
 @app.post('/add/<item_id>/<amount>')
+@add_stock_metric.time()
 def add_stock(item_id: str, amount: int):
     """
     Adds the given number of stock items to the item count in the stock
@@ -106,6 +133,7 @@ def add_stock(item_id: str, amount: int):
 
 
 @app.post('/subtract/<item_id>/<amount>')
+@remove_stock_metric.time()
 def remove_stock(item_id: str, amount: int):
     """
     Subtracts an item from stock by the amount specified
@@ -113,21 +141,38 @@ def remove_stock(item_id: str, amount: int):
     :param amount:
     :return:
     """
-    item = Item.query.get_or_404(item_id)
-    app.logger.debug(f"Attempting to take {amount} from stock of {item.__dict__=}")
-    if item.stock >= int(amount):
-        item.stock = item.stock - int(amount)
-        db.session.add(item)
-        db.session.commit()
-        response = make_response("Stock removed", HTTPStatus.OK)
-    else:
-        response = make_response("Not enough stock", HTTPStatus.BAD_REQUEST)
+    app.logger.debug(f"Attempting to take {amount} from stock of {item_id=}")
+    return update_stock({item_id: Item.stock - int(amount)})
 
-    app.logger.debug(f"Remove stock {item_id=}, {amount=} return = {response}")
+
+def update_stock(amounts: Dict[str, int]):
+    if len(amounts) > 0:
+        try:
+            items_affected = db.session.query(Item).filter(
+                Item.id.in_(amounts)
+            ).update({Item.stock: case(
+                amounts,
+                value=Item.id
+            )})
+
+            db.session.commit()
+        except sqlalchemy.exc.IntegrityError:
+            app.logger.debug(f"Violated constraint for item when subtracting items")
+            response = make_response("Not enough stock", HTTPStatus.BAD_REQUEST)
+        else:
+            if items_affected != len(amounts):
+                response = make_response("Stock subtracting failed for at least 1 item", HTTPStatus.BAD_REQUEST)
+            else:
+                response = make_response("stock subtracted", HTTPStatus.OK)
+    else:
+        app.logger.warning("Items subtract call with no items")
+        response = make_response("No items in request", HTTPStatus.OK)
+    app.logger.debug(f"Update stock response {response.response}, : {response.status_code}")
     return response
 
 
 @app.post('/subtractItems/')
+@subtract_items_metric.time()
 def subtract_items():
     """
     Substracts all items in the list from stock by the amount of 1
@@ -135,32 +180,11 @@ def subtract_items():
     :return:
     """
     app.logger.debug(f"Subtract the items for request: {request.json =}")
-    item_ids = request.json['item_ids']
-    if any(item_ids):
-        items = db.session.query(Item).filter(
-            Item.id.in_(request.json['item_ids'])
-        )
-
-        item: Item
-        for item in items:
-            # Return 400 and do not commit when item is out of stock
-            if item.stock < 1:
-                app.logger.debug(f"Not enough stock")
-                return make_response("not enough stock", HTTPStatus.BAD_REQUEST)
-
-            item.stock -= 1
-            db.session.add(item)
-
-        db.session.commit()
-        response = make_response("stock subtracted", HTTPStatus.OK)
-    else:
-        app.logger.warning("Items subtract call with no items")
-        response = make_response("No items in request", HTTPStatus.OK)
-
-    return response
+    return update_stock({id_: Item.stock - 1 for id_ in request.json['item_ids']})
 
 
 @app.post('/increaseItems/')
+@increase_items_metric.time()
 def increase_items():
     """
     This is a rollback function. Following the SAGA pattern.
@@ -169,22 +193,17 @@ def increase_items():
     :return:
     """
     app.logger.debug(f"Increase the items for request: {request.json =}")
-
-    items = db.session.query(Item).filter(
-        Item.id.in_(request.json['item_ids'])
-    )
-    app.logger.debug(f"items= {items}")
-
-    item: Item
-    for item in items:
-        item.stock += 1
-        db.session.add(item)
-
-    db.session.commit()
-
-    return make_response("stock increased", HTTPStatus.OK)
+    return update_stock({id_: Item.stock + 1 for id_ in request.json['item_ids']})
 
 
 @app.delete('/clear_tables')
 def clear_tables():
     recreate_tables()
+    return make_response("tables cleared", HTTPStatus.OK)
+
+
+@app.route("/metrics")
+def metrics():
+    data = generate_latest(registry)
+    app.logger.debug(f"Metrics, returning: {data}")
+    return Response(data, mimetype=CONTENT_TYPE_LATEST)

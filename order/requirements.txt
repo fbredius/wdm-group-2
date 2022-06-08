@@ -5,3 +5,4 @@ requests==2.27.1
 Flask-SQLAlchemy==2.5.1
 psycopg2==2.9.3
 pika==1.2.1
+prometheus-client

@@ -16,12 +16,12 @@ services:
     image: europe-west4-docker.pkg.dev/versatile-field-350813/web-scale-repository/order:latest
     environment:
       - GATEWAY_URL=http://gateway:80
+    command: gunicorn -b 0.0.0.0:5000 app:app --timeout 0
     depends_on:
       order-postgres-service:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
-    command: gunicorn -b 0.0.0.0:5000 app:app --timeout 0
     env_file:
       - env/order_postgres.env
 
