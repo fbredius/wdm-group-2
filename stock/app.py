@@ -2,13 +2,16 @@ import logging
 import os
 import shutil
 import uuid
+from http import HTTPStatus
 
 import requests
 from flask import Flask, Response
+from flask import Flask, make_response, jsonify
 from flask import request
 from flask_sqlalchemy import SQLAlchemy
 from prometheus_client import CollectorRegistry, multiprocess, generate_latest, CONTENT_TYPE_LATEST, Summary
 from sqlalchemy.dialects.postgresql import JSON
+from sqlalchemy import CheckConstraint
 
 app_name = 'stock-service'
 app = Flask(app_name)
@@ -36,37 +39,15 @@ registry = CollectorRegistry()
 multiprocess.MultiProcessCollector(registry)
 
 
-class Order(db.Model):
-    __tablename__ = 'orders'
-
-    id = db.Column(db.String(), primary_key=True)
-    paid = db.Column(db.Boolean, unique=False, nullable=False)
-    user_id = db.Column(db.String(), unique=False, nullable=False)
-    items = db.Column(JSON, unique=False, nullable=True)
-    total_cost = db.Column(db.Float, unique=False, nullable=False)
-
-    def __init__(self, id, paid, items, user_id, total_cost):
-        self.id = id
-        self.paid = paid
-        self.items = items
-        self.user_id = user_id
-        self.total_cost = total_cost
-
-    def __repr__(self):
-        return '<id {}>'.format(self.id)
-
-    def as_dict(self):
-        dct = self.__dict__.copy()
-        dct.pop('_sa_instance_state', None)
-        return dct
-
-
 class Item(db.Model):
     __tablename__ = 'items'
 
     id = db.Column(db.String, primary_key=True)
     price = db.Column(db.Float, unique=False, nullable=False)
     stock = db.Column(db.Integer, unique=False, nullable=False)
+    __table_args__ = (
+        CheckConstraint(stock >= 0, name='check_stock_positive'), {}
+    )
 
     def __init__(self, id, price, stock):
         self.id = id
@@ -82,9 +63,15 @@ class Item(db.Model):
         return dct
 
 
+def recreate_tables():
+    db.drop_all()
+    db.create_all()
+    db.session.commit()
+
+
 if os.environ.get('DOCKER_COMPOSE_RUN') == "True":
     app.logger.info("Clearing all tables as we're running in DOCKER COMPOSE")
-    db.drop_all()
+    recreate_tables()
 
 db.create_all()
 db.session.commit()
@@ -99,16 +86,27 @@ checkout_items_metric = Summary("checkout_items", "/checkout/")
 @app.post('/item/create/<price>')
 @create_item_metric.time()
 def create_item(price: float):
+    """
+    Adds an item and its price
+    :param price:
+    :return: the item's id
+    """
     idx = str(uuid.uuid4())
     item = Item(idx, float(price), 0)
+    app.logger.debug(f"Adding item {item.as_dict()} to db")
     db.session.add(item)
     db.session.commit()
-    return {"item_id": idx}, 200
+    return make_response(jsonify({"item_id": idx}), HTTPStatus.OK)
 
 
 @app.get('/find/<item_id>')
 @find_item_metric.time()
 def find_item(item_id: str):
+    """
+    Return an item's availability and price
+    :param item_id:
+    :return: Item { id, stock, price }
+    """
     app.logger.debug(f"Finding: {item_id=}")
     return Item.query.get_or_404(item_id).as_dict()
 
@@ -116,64 +114,102 @@ def find_item(item_id: str):
 @app.post('/add/<item_id>/<amount>')
 @add_stock_metric.time()
 def add_stock(item_id: str, amount: int):
+    """
+    Adds the given number of stock items to the item count in the stock
+    :param item_id:
+    :param amount:
+    :return:
+    """
     item = Item.query.get_or_404(item_id)
     item.stock = item.stock + int(amount)
     db.session.add(item)
     db.session.commit()
-    return "Stock added", 200
+    return make_response("Stock added", HTTPStatus.OK)
 
 
 @app.post('/subtract/<item_id>/<amount>')
 @remove_stock_metric.time()
 def remove_stock(item_id: str, amount: int):
+    """
+    Subtracts an item from stock by the amount specified
+    :param item_id:
+    :param amount:
+    :return:
+    """
     item = Item.query.get_or_404(item_id)
     app.logger.debug(f"Attempting to take {amount} from stock of {item.__dict__=}")
     if item.stock >= int(amount):
         item.stock = item.stock - int(amount)
         db.session.add(item)
         db.session.commit()
-        msg, return_code = "Stock removed", 200
+        response = make_response("Stock removed", HTTPStatus.OK)
     else:
-        msg, return_code = "Not enough stock", 400
+        response = make_response("Not enough stock", HTTPStatus.BAD_REQUEST)
 
-    app.logger.debug(f"Remove stock {item_id=}, {amount=} return = {msg=}, {return_code=}")
-    return msg, return_code
+    app.logger.debug(f"Remove stock {item_id=}, {amount=} return = {response}")
+    return response
+
+@app.post('/subtractItems/')
+def subtract_items():
+    """
+    Substracts all items in the list from stock by the amount of 1
+    Pass in an 'items_ids" array as JSON in the POST request.
+    :return:
+    """
+    app.logger.debug(f"Subtract the items for request: {request.json =}")
+    item_ids = request.json['item_ids']
+    if any(item_ids):
+        items = db.session.query(Item).filter(
+            Item.id.in_(request.json['item_ids'])
+        )
+
+        item: Item
+        for item in items:
+            # Return 400 and do not commit when item is out of stock
+            if item.stock < 1:
+                app.logger.debug(f"Not enough stock")
+                return make_response("not enough stock", HTTPStatus.BAD_REQUEST)
+
+            item.stock -= 1
+            db.session.add(item)
+
+        db.session.commit()
+        response = make_response("stock subtracted", HTTPStatus.OK)
+    else:
+        app.logger.warning("Items subtract call with no items")
+        response = make_response("No items in request", HTTPStatus.OK)
+
+    return response
 
 
-@app.post('/checkout/')
-@checkout_items_metric.time()
-def checkout_items():
-    app.logger.debug(f"checkout items for")
-    app.logger.debug(f"{request.json =}")
-    item_ids = request.json['order']['items']
-
-    # Subtracts stock of all items by 1 and sums prices
-
-    # filter_list = [Item.id == x for x in item_ids]
+@app.post('/increaseItems/')
+def increase_items():
+    """
+    This is a rollback function. Following the SAGA pattern.
+    Increases all items in the list from stock by the amount of 1
+    Pass in an 'items_ids" array as JSON in the POST request.
+    :return:
+    """
+    app.logger.debug(f"Increase the items for request: {request.json =}")
 
     items = db.session.query(Item).filter(
-        Item.id.in_(item_ids)
+        Item.id.in_(request.json['item_ids'])
     )
     app.logger.debug(f"items= {items}")
 
-    total_price = 0
     item: Item
     for item in items:
-        item.stock -= 1
+        item.stock += 1
         db.session.add(item)
-        total_price += item.price
-
-    # pay
-    payment_request_url = f"{payment_url}/pay/{request.json['order']['user_id']}/{request.json['order']['id']}/{total_price} "
-    app.logger.debug(f"requesting payment for {total_price} to {payment_request_url}")
-    payment_response = requests.post(payment_request_url)
-    if not (200 <= payment_response.status_code < 300):
-        app.logger.debug(f"payment response code not success, {payment_response.text}")
-        return payment_response.text, 400
 
     db.session.commit()
 
-    return "paid and stock subtracted", 200
+    return make_response("stock increased", HTTPStatus.OK)
+
+
+@app.delete('/clear_tables')
+def clear_tables():
+    recreate_tables()
 
 
 @app.route("/metrics")

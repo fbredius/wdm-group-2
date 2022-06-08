@@ -26,12 +26,10 @@ services:
 
   order-postgres-service:
     image: postgres:14.1-alpine
-    environment:
-      - PGDATA=/tmp/data
     env_file:
       - env/order_postgres.env
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      test: [ "CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -53,7 +51,7 @@ services:
     env_file:
       - env/stock_postgres.env
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      test: [ "CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB" ]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -73,7 +71,7 @@ services:
     env_file:
       - env/payment_postgres.env
     healthcheck:
-      test: [ "CMD-SHELL", "pg_isready -U postgres" ]
+      test: [ "CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB" ]
       interval: 5s
       timeout: 5s
       retries: 5

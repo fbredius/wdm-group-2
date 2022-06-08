@@ -2,9 +2,11 @@ import logging
 import os
 import shutil
 import uuid
+from http import HTTPStatus
 
 import requests
 from flask import Flask, Response
+from flask import Flask, make_response, jsonify
 from flask_sqlalchemy import SQLAlchemy
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
@@ -74,6 +76,12 @@ if os.environ.get('DOCKER_COMPOSE_RUN') == "True":
 db.create_all()
 db.session.commit()
 
+
+def recreate_tables():
+    db.drop_all()
+    db.create_all()
+    db.session.commit()
+
 total_time_metric = Histogram("order_time", "Time of all requests in order app")
 create_order_metric = Histogram("create_order", "Histogram of /create/<user_id> endpoint")
 remove_order_metric = Histogram("remove_order", "Histogram of /remove<order_id>")
@@ -86,53 +94,97 @@ checkout_metric = Histogram("checkout", "Histogram of /checkout/<order_id>")
 @create_order_metric.time()
 @total_time_metric.time()
 def create_order(user_id):
+    """
+    Creates an order for the given user, and returns an order_id
+    :param user_id:
+    :return: the order's id
+    """
     idx = str(uuid.uuid4())
     order = Order(idx, False, [], user_id, 0)
     db.session.add(order)
     db.session.commit()
-    return {"order_id": idx}
+    return make_response(jsonify({"order_id": idx}), HTTPStatus.OK)
 
 
 @app.delete('/remove/<order_id>')
 @remove_order_metric.time()
 @total_time_metric.time()
 def remove_order(order_id):
+    """
+    Deletes an order by ID
+    :param order_id:
+    :return:
+    """
     Order.query.filter_by(id=order_id).delete()
     db.session.commit()
-    return
+    return make_response('success', HTTPStatus.OK)
 
 
 @app.post('/addItem/<order_id>/<item_id>')
 @add_item_metric.time()
 @total_time_metric.time()
 def add_item(order_id, item_id):
+    """
+    Adds a given item in the order given
+    :param order_id:
+    :param item_id:
+    :return:
+    """
     app.logger.debug(f"Adding item to {order_id = }, {item_id =}")
     order = Order.query.get_or_404(order_id)
     app.logger.debug(f"before {order.items = }")
+
+    # Add item to order.items list
     order.items.append(item_id)
     flag_modified(order, "items")
+
+    # Increase total cost of order
+    item = requests.get(f"{stock_url}/find/{item_id}").json()
+    order.total_cost += item['price']
+    flag_modified(order, "total_cost")
+
     db.session.merge(order)
     db.session.flush()
     db.session.commit()
     app.logger.debug(f"Added item to {order_id = }, {item_id =}, {order.items = }")
-    return "Item added to order", 200
+    return make_response("Item added to order", HTTPStatus.OK)
 
 
 @app.delete('/removeItem/<order_id>/<item_id>')
 @remove_order_metric.time()
 @total_time_metric.time()
 def remove_item(order_id, item_id):
+    """
+    Removes the given item from the given order
+    :param order_id:
+    :param item_id:
+    :return:
+    """
     order = Order.query.get_or_404(order_id)
+
+    # Remove item from order.items list
     order.items.remove(item_id)
+    flag_modified(order, "items")
+
+    # Decrease total cost of order
+    item = requests.get(f"{stock_url}/find/{item_id}").json()
+    order.total_cost -= item['price']
+    flag_modified(order, "total_cost")
+
     db.session.add(order)
     db.session.commit()
-    return "Item removed from order", 200
+    return make_response("Item removed from order", HTTPStatus.OK)
 
 
 @app.get('/find/<order_id>')
 @find_order_metric.time()
 @total_time_metric.time()
 def find_order(order_id):
+    """
+    Retrieves the information of an order
+    :param order_id:
+    :return: Order { order_id, paid, items, user_id, total_cost }
+    """
     return Order.query.get_or_404(order_id).as_dict()
 
 
@@ -140,37 +192,62 @@ def find_order(order_id):
 @checkout_metric.time()
 @total_time_metric.time()
 def checkout(order_id):
+    """
+    Handle the checkout.
+    First we talk to the stock service to subtract the items.
+    Then we talk to the payment service to make the payment.
+    If one of both fails, we do rollback the commit, and we return status code 400.
+    Else we return 200.
+    :param order_id:
+    :return:
+    """
     app.logger.debug(f"Checking out order {order_id}")
     order: Order = Order.query.get_or_404(order_id)
     app.logger.debug(f"Found order in checkout: {order.as_dict()}")
     if order.paid:
         app.logger.debug(f"order already paid")
-        return "Order already paid", 200
+        return make_response("Order already paid", HTTPStatus.BAD_REQUEST)
 
-    # Send all items to stock service
-    # if enough stock
-    # accumulate price and send to payment service
-    # if enough credit
-    # pay
-    # if paid remove stock
-    # if paid return success
-
-    # Get prices of all items in order
+    # Subtract Stock
     app.logger.debug(f"sending request to stock-service at {stock_url} with order: {order.as_dict()}")
-    stock_response = requests.post(f"{stock_url}/checkout", json={
-        "order": order.as_dict()
+    stock_response = requests.post(f"{stock_url}/subtractItems", json={
+        "item_ids": order.items
     })
 
-    # TODO handle all cases except the positive one
-    if not (200 <= stock_response.status_code < 300):
+    # Handle Payment
+    payment_request_url = f"{payment_url}/pay/{order.user_id}/{order.id}/{order.total_cost}"
+    app.logger.debug(f"requesting payment for {order.total_cost} to {payment_request_url}")
+    payment_response = requests.post(payment_request_url)
+
+    # Handle Transaction
+    if not (HTTPStatus.OK <= payment_response.status_code < HTTPStatus.MULTIPLE_CHOICES):
+        # Rollback Stock subtraction if payment fails
+        if HTTPStatus.OK <= stock_response.status_code < HTTPStatus.MULTIPLE_CHOICES:
+            requests.post(f"{stock_url}/increaseItems", json={
+                "item_ids": order.items
+            })
+
+        app.logger.debug(f"payment response code not success, {payment_response.text}")
+        return make_response(payment_response.text, HTTPStatus.BAD_REQUEST)
+
+    if not (HTTPStatus.OK <= stock_response.status_code < HTTPStatus.MULTIPLE_CHOICES):
+        # Rollback Payment if stock fails
+        if HTTPStatus.OK <= payment_response.status_code < HTTPStatus.MULTIPLE_CHOICES:
+            requests.post(f"{payment_url}/cancel/{order.user_id}/{order.id}")
+
         app.logger.debug(f"stock response code not success, {stock_response.text}")
-        return stock_response.text, 400
+        return make_response(stock_response.text, HTTPStatus.BAD_REQUEST)
     else:
         order.paid = True
         db.session.add(order)
         db.session.commit()
     app.logger.debug(f"order successful")
-    return "Order successful", 200
+    return make_response("Order successful", HTTPStatus.OK)
+
+
+@app.delete('/clear_tables')
+def clear_tables():
+    recreate_tables()
 
 
 @app.route("/metrics")

@@ -2,10 +2,12 @@ import logging
 import os
 import shutil
 import uuid
+from http import HTTPStatus
 
-from flask import Flask, Response
+from flask import Flask, make_response, jsonify, Response
 from flask_sqlalchemy import SQLAlchemy
 from prometheus_client import CollectorRegistry, multiprocess, Summary, CONTENT_TYPE_LATEST, generate_latest
+from sqlalchemy import CheckConstraint
 
 app_name = 'payment-service'
 app = Flask(app_name)
@@ -31,11 +33,20 @@ registry = CollectorRegistry()
 multiprocess.MultiProcessCollector(registry)
 
 
+def recreate_tables():
+    db.drop_all()
+    db.create_all()
+    db.session.commit()
+
+
 class User(db.Model):
     __tablename__ = 'users'
 
     id = db.Column(db.String(), primary_key=True)
     credit = db.Column(db.Float, unique=False, nullable=False)
+    __table_args__ = (
+        CheckConstraint(credit >= 0, name='check_credit_positive'), {}
+    )
 
     def __init__(self, id, credit):
         self.id = id
@@ -91,22 +102,37 @@ def construct_payment_id(user_id, order_id):
 @app.post('/create_user')
 @create_order_metric.time()
 def create_user():
+    """
+    Creates a user with 0 credit
+    :return: the user's id
+    """
     idx = str(uuid.uuid4())
     user = User(idx, 0)
     db.session.add(user)
     db.session.commit()
-    return {"user_id": idx}
+    return make_response(jsonify({"user_id": idx}), HTTPStatus.OK)
 
 
 @app.get('/find_user/<user_id>')
 @find_user_metric.time()
 def find_user(user_id: str):
+    """
+    Returns the user information
+    :param user_id:
+    :return: User { id, credit }
+    """
     return User.query.get_or_404(user_id).as_dict()
 
 
 @app.post('/add_funds/<user_id>/<amount>')
 @add_credit_metric.time()
 def add_credit(user_id: str, amount: float):
+    """
+    Adds funds (amount) to the user's account
+    :param user_id:
+    :param amount:
+    :return: true / false
+    """
     user = User.query.filter_by(id=user_id).first()
     done = False
     if bool(user):
@@ -115,18 +141,26 @@ def add_credit(user_id: str, amount: float):
         db.session.commit()
         done = True
 
-    return {"done": done}
+    return make_response(jsonify({"done": done}), HTTPStatus.OK)
 
 
 @app.post('/pay/<user_id>/<order_id>/<amount>')
 @remove_credit_metric.time()
 def remove_credit(user_id: str, order_id: str, amount: float):
+    """
+    Subtracts the amount of the order from the user's credit
+    Returns failure if credit is not enough
+    :param user_id:
+    :param order_id:
+    :param amount:
+    :return:
+    """
     user = User.query.get_or_404(user_id)
-    app.logger.debug(f"removing credit from user: {user.__dict__ =}")
+    app.logger.debug(f"removing credit from user: {user.as_dict() =}")
     amount = float(amount)
     if user.credit < amount:
         app.logger.debug(f"{user.credit = } is smaller than {amount =} of credit to remove")
-        msg, status_code = "Not enough credit", 403
+        response = make_response("Not enough credit", HTTPStatus.FORBIDDEN)
     else:
         user.credit = user.credit - amount
         db.session.add(user)
@@ -135,15 +169,21 @@ def remove_credit(user_id: str, order_id: str, amount: float):
         db.session.add(payment)
         app.logger.debug(f"succesfully removed {amount} credit from user with id {user_id}")
         db.session.commit()
-        msg, status_code = "Credit removed", 200
+        response = make_response("Credit removed", HTTPStatus.OK)
 
-    app.logger.debug(f"Remove credit result, {msg = }, {status_code = }")
-    return msg, status_code
+    app.logger.debug(f"Remove credit result, {response}")
+    return response
 
 
 @app.post('/cancel/<user_id>/<order_id>')
 @cancel_payment_metric.time()
 def cancel_payment(user_id: str, order_id: str):
+    """
+    Cancels the payment made by a specific user for a specific order
+    :param user_id:
+    :param order_id:
+    :return:
+    """
     user = User.query.get_or_404(user_id)
     idx = construct_payment_id(user_id, order_id)
     payment = Payment.query.get_or_404(idx)
@@ -152,15 +192,21 @@ def cancel_payment(user_id: str, order_id: str):
     db.session.add(user)
     db.session.commit()
 
-    msg, status_code = "payment reset", 200
+    response = make_response("payment reset", HTTPStatus.OK)
 
-    app.logger.debug(f"Cancel payment result, {msg = }, {status_code = }")
-    return msg, status_code
+    app.logger.debug(f"Cancel payment result, {response}")
+    return response
 
 
 @app.post('/status/<user_id>/<order_id>')
 @payment_status_metric.time()
 def payment_status(user_id: str, order_id: str):
+    """
+    Returns the status of the payment
+    :param user_id:
+    :param order_id:
+    :return: true / false
+    """
     paid = False
     idx = construct_payment_id(user_id, order_id)
     payment = Payment.query.filter_by(id=idx).first()
@@ -168,7 +214,12 @@ def payment_status(user_id: str, order_id: str):
         paid = payment.paid
 
     app.logger.debug(f"Order with order id: {order_id} ({user_id = }, paid status: {paid}")
-    return {"paid": paid}
+    return make_response(jsonify({"paid": paid}), HTTPStatus.OK)
+
+
+@app.delete('/clear_tables')
+def clear_tables():
+    recreate_tables()
 
 
 @app.route("/metrics")
