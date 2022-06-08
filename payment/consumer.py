@@ -35,7 +35,7 @@ class Consumer(object):
         :param properties: properties (needed for the reply_to queue and task to execute)
         :param body: request body
         """
-
+        # Send acknowledgement to RabbitMQ (otherwise this task is enqueued again)
         self.channel.basic_ack(delivery_tag=method.delivery_tag)
 
         # Read the request and task to do
@@ -67,7 +67,6 @@ class Consumer(object):
                                            type=str(status)),
                                        body=str(msg))
 
-        # Send acknowledgement to RabbitMQ (otherwise this task is enqueued again)
         logging.debug(f"[payment queue] Done")
 
     def run(self):
@@ -103,6 +102,7 @@ class Consumer(object):
             db.session.commit()
             msg, status_code = "Credit removed", 200
 
+        db.session.close()
         logging.debug(f"Remove credit result, {msg = }, {status_code = }")
         return msg, status_code
 
@@ -117,7 +117,7 @@ class Consumer(object):
         db.session.commit()
 
         msg, status_code = "payment reset", 200
-
+        db.session.close()
         logging.debug(f"Cancel payment result, {msg = }, {status_code = }")
         return msg, status_code
 

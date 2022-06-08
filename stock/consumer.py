@@ -96,12 +96,15 @@ class Consumer(object):
             # Return 400 and do not commit when item is out of stock
             if item.stock < 1:
                 logging.debug(f"Not enough stock")
+                db.session.rollback()
+                db.session.close()
                 return "not enough stock", 400
 
             item.stock -= 1
             db.session.add(item)
 
         db.session.commit()
+        db.session.close()
 
         return "stock subtracted", 200
 
@@ -125,7 +128,7 @@ class Consumer(object):
             db.session.add(item)
 
         db.session.commit()
-
+        db.session.close()
         return "stock increased", 200
 
 
