@@ -90,8 +90,8 @@ db.session.commit()
 create_order_metric = Summary("create_user", "Summary of /create_user endpoint")
 find_user_metric = Summary("find_user", "Summary of /find_user/<user_id>")
 add_credit_metric = Summary("add_credit", "Summary of /add_funds/<user_id>/<amount>")
-remove_credit_metric = Summary("remove_credit", "Summary of /pay/<user_id>/<order_id>/<amount>")
-cancel_payment_metric = Summary("cancel_payment", "/cancel/<user_id>/<order_id>")
+pay_metric = Summary("pay", "Summary of /pay/<user_id>/<order_id>/<amount>")
+cancel_metric = Summary("cancel", "/cancel/<user_id>/<order_id>")
 payment_status_metric = Summary("payment_status", "/status/<user_id>/<order_id>")
 
 
@@ -110,6 +110,7 @@ def create_user():
     user = User(idx, 0)
     db.session.add(user)
     db.session.commit()
+    db.session.close()
     return make_response(jsonify({"user_id": idx}), HTTPStatus.OK)
 
 
@@ -139,14 +140,19 @@ def add_credit(user_id: str, amount: float):
         user.credit = user.credit + float(amount)
         db.session.add(user)
         db.session.commit()
+        db.session.close()
         done = True
 
     return make_response(jsonify({"done": done}), HTTPStatus.OK)
 
 
 @app.post('/pay/<user_id>/<order_id>/<amount>')
-@remove_credit_metric.time()
-def remove_credit(user_id: str, order_id: str, amount: float):
+@pay_metric.time()
+def pay(user_id: str, order_id: str, amount: float):
+    return remove_credit(amount, order_id, user_id)
+
+
+def remove_credit(amount, order_id, user_id):
     """
     Subtracts the amount of the order from the user's credit
     Returns failure if credit is not enough
@@ -169,15 +175,19 @@ def remove_credit(user_id: str, order_id: str, amount: float):
         db.session.add(payment)
         app.logger.debug(f"succesfully removed {amount} credit from user with id {user_id}")
         db.session.commit()
+        db.session.close()
         response = make_response("Credit removed", HTTPStatus.OK)
-
     app.logger.debug(f"Remove credit result, {response}")
     return response
 
 
 @app.post('/cancel/<user_id>/<order_id>')
-@cancel_payment_metric.time()
-def cancel_payment(user_id: str, order_id: str):
+@cancel_metric.time()
+def cancel(user_id: str, order_id: str):
+    return cancel_payment(order_id, user_id)
+
+
+def cancel_payment(order_id, user_id):
     """
     Cancels the payment made by a specific user for a specific order
     :param user_id:
@@ -191,9 +201,8 @@ def cancel_payment(user_id: str, order_id: str):
     user.credit = user.credit + payment.amount
     db.session.add(user)
     db.session.commit()
-
+    db.session.close()
     response = make_response("payment reset", HTTPStatus.OK)
-
     app.logger.debug(f"Cancel payment result, {response}")
     return response
 

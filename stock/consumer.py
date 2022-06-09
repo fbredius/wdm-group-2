@@ -4,7 +4,7 @@ import json
 import logging
 import pika
 
-from app import app, Item, db, update_stock
+from app import app, Item, update_stock
 
 logging.basicConfig()
 logging.getLogger().setLevel(logging.DEBUG)
