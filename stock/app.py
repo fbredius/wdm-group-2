@@ -146,6 +146,12 @@ def remove_stock(item_id: str, amount: int):
 
 
 def update_stock(amounts: Dict[str, int]):
+    """
+    Update the stock in the database
+    If the stock goes below zero, the db will throw an integrity error
+    :param amounts:
+    :return:
+    """
     if len(amounts) > 0:
         try:
             items_affected = db.session.query(Item).filter(
@@ -159,6 +165,7 @@ def update_stock(amounts: Dict[str, int]):
         except sqlalchemy.exc.IntegrityError:
             app.logger.debug(f"Violated constraint for item when subtracting items")
             response = make_response("Not enough stock", HTTPStatus.BAD_REQUEST)
+            db.session.rollback()
         else:
             if items_affected != len(amounts):
                 response = make_response("Stock subtracting failed for at least 1 item", HTTPStatus.BAD_REQUEST)
@@ -168,6 +175,8 @@ def update_stock(amounts: Dict[str, int]):
         app.logger.warning("Items subtract call with no items")
         response = make_response("No items in request", HTTPStatus.OK)
     app.logger.debug(f"Update stock response {response.response}, : {response.status_code}")
+
+    db.session.close()
     return response
 
 

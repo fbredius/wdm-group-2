@@ -260,6 +260,7 @@ def checkout(order_id):
         order.paid = True
         db.session.add(order)
         db.session.commit()
+        db.session.close()
     app.logger.debug(f"order successful")
 
     # Close RabbitMQ connection
