@@ -16,11 +16,12 @@ services:
     image: europe-west4-docker.pkg.dev/versatile-field-350813/web-scale-repository/order:latest
     environment:
       - GATEWAY_URL=http://gateway:80
-    command: gunicorn -b 0.0.0.0:5000 app:app
+    command: gunicorn -b 0.0.0.0:5000 app:app --timeout 0
     depends_on:
       order-postgres-service:
         condition: service_healthy
-
+      rabbitmq:
+        condition: service_healthy
     env_file:
       - env/order_postgres.env
 
@@ -42,7 +43,9 @@ services:
     depends_on:
       stock-postgres-service:
         condition: service_healthy
-    command: gunicorn -b 0.0.0.0:5000 app:app
+      rabbitmq:
+        condition: service_healthy
+    command: gunicorn -b 0.0.0.0:5000 app:app --timeout 0
     env_file:
       - env/stock_postgres.env
 
@@ -56,12 +59,25 @@ services:
       timeout: 5s
       retries: 5
 
+  stock-queue:
+    build: ./stock
+    command: python consumer.py
+    depends_on:
+      stock-postgres-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    env_file:
+      - env/stock_postgres.env
+
   payment-service:
     build: ./payment
     image: europe-west4-docker.pkg.dev/versatile-field-350813/web-scale-repository/user:latest
-    command: gunicorn -b 0.0.0.0:5000 app:app
+    command: gunicorn -b 0.0.0.0:5000 app:app  --timeout 0
     depends_on:
       payment-postgres-service:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     env_file:
       - env/payment_postgres.env
@@ -72,6 +88,28 @@ services:
       - env/payment_postgres.env
     healthcheck:
       test: [ "CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB" ]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  payment-queue:
+    build: ./payment
+    command: python consumer.py
+    depends_on:
+      stock-postgres-service:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    env_file:
+      - env/payment_postgres.env
+
+  rabbitmq:
+    image: 'rabbitmq:3.10-management'
+    ports:
+      - '5672:5672'
+      - '15672:15672'
+    healthcheck:
+      test: [ "CMD-SHELL", "rabbitmq-diagnostics -q check_port_connectivity" ]
       interval: 5s
       timeout: 5s
       retries: 5
