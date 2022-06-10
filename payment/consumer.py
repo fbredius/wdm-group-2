@@ -4,7 +4,7 @@ import json
 import logging
 import pika
 
-from app import User, Payment, construct_payment_id, db
+from app import app, remove_credit, cancel_payment
 
 logging.basicConfig()
 logging.getLogger().setLevel(logging.DEBUG)
@@ -43,20 +43,19 @@ class Consumer(object):
         routing = properties.reply_to
         task = properties.type
 
-        # Set message en status code
-        status = 400
-        msg = "Payment task {} has not been processed".format(task)
-
         # Execute the task
         logging.debug(f"[payment queue] Executing task: {task =}")
-        payment = json.loads(request)
-        user_id = payment["user_id"]
-        order_id = payment["order_id"]
+        request_body = json.loads(request)
+        user_id = request_body["user_id"]
+        order_id = request_body["order_id"]
+
         if task == "pay":
-            total_cost = payment["total_cost"]
-            msg, status = self._remove_credit(user_id, order_id, total_cost)
+            amount = request_body["total_cost"]
+            response = self._remove_credit(user_id, order_id, amount)
         elif task == "cancel":
-            msg, status = self._cancel_payment(user_id, order_id)
+            response = self._cancel_payment(user_id, order_id)
+        else:
+            return
 
         # Send back a reply if necessary
         if routing is not None:
@@ -64,8 +63,8 @@ class Consumer(object):
                                        routing_key=str(routing),
                                        properties=pika.BasicProperties(
                                            correlation_id=properties.correlation_id,
-                                           type=str(status)),
-                                       body=str(msg))
+                                           type=str(response.status_code)),
+                                       body=response.get_data())
 
         logging.debug(f"[payment queue] Done")
 
@@ -86,40 +85,13 @@ class Consumer(object):
 
     @staticmethod
     def _remove_credit(user_id: str, order_id: str, amount: float):
-        user = User.query.get_or_404(user_id)
-        logging.debug(f"removing credit from user: {user.__dict__ =}")
-        amount = float(amount)
-        if user.credit < amount:
-            logging.debug(f"{user.credit = } is smaller than {amount =} of credit to remove")
-            msg, status_code = "Not enough credit", 403
-        else:
-            user.credit = user.credit - amount
-            db.session.add(user)
-            idx = construct_payment_id(user_id, order_id)
-            payment = Payment(idx, user_id, order_id, amount, True)
-            db.session.add(payment)
-            logging.debug(f"succesfully removed {amount} credit from user with id {user_id}")
-            db.session.commit()
-            msg, status_code = "Credit removed", 200
-
-        db.session.close()
-        logging.debug(f"Remove credit result, {msg = }, {status_code = }")
-        return msg, status_code
+        with app.app_context():
+            return remove_credit(amount, order_id, user_id)
 
     @staticmethod
     def _cancel_payment(user_id: str, order_id: str):
-        user = User.query.get_or_404(user_id)
-        idx = construct_payment_id(user_id, order_id)
-        payment = Payment.query.get_or_404(idx)
-        payment.paid = False
-        user.credit = user.credit + payment.amount
-        db.session.add(user)
-        db.session.commit()
-
-        msg, status_code = "payment reset", 200
-        db.session.close()
-        logging.debug(f"Cancel payment result, {msg = }, {status_code = }")
-        return msg, status_code
+        with app.app_context():
+            return cancel_payment(order_id, user_id)
 
 
 consumer = Consumer()

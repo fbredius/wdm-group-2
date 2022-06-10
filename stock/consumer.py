@@ -4,7 +4,7 @@ import json
 import logging
 import pika
 
-from app import Item, db
+from app import app, Item, update_stock
 
 logging.basicConfig()
 logging.getLogger().setLevel(logging.DEBUG)
@@ -43,17 +43,15 @@ class Consumer(object):
         routing = properties.reply_to
         task = properties.type
 
-        # Set message en status code
-        status = 400
-        msg = "Stock task {} has not been processed".format(task)
-
         # Execute the task
         logging.debug(f"[stock queue] Executing task: {task =}")
-        items = json.loads(request)
+        request_body = json.loads(request)
         if task == "subtractItems":
-            msg, status = self._subtract_items(items)  # Subtract function here
+            response = self._subtract_items(request_body)
         elif task == "increaseItems":
-            msg, status = self._increase_items(items)  # Increase function here
+            response = self._increase_items(request_body)
+        else:
+            return
 
         # Send back a reply if necessary
         if routing is not None:
@@ -61,8 +59,8 @@ class Consumer(object):
                                        routing_key=str(routing),
                                        properties=pika.BasicProperties(
                                            correlation_id=properties.correlation_id,
-                                           type=str(status)),
-                                       body=str(msg))
+                                           type=str(response.status_code)),
+                                       body=response.get_data())
 
         logging.debug(f"[stock queue] Done")
 
@@ -82,54 +80,29 @@ class Consumer(object):
         self.connection.close()
 
     @staticmethod
-    def _subtract_items(item_ids):
-        logging.debug(f"Subtract the items for request:")
-        logging.debug(f"{item_ids =}")
+    def _subtract_items(request_body):
+        """
+        Subtracts all items in the list from stock by the amount of 1
+        Pass in an 'request_body' containing an 'item_ids' array
+        :return:
+        """
+        logging.debug(f"Subtract the items: {request_body['item_ids']}")
 
-        # Subtracts stock of all items by 1
-        items = db.session.query(Item).filter(
-            Item.id.in_(item_ids['item_ids'])
-        )
-
-        item: Item
-        for item in items:
-            # Return 400 and do not commit when item is out of stock
-            if item.stock < 1:
-                logging.debug(f"Not enough stock")
-                db.session.rollback()
-                db.session.close()
-                return "not enough stock", 400
-
-            item.stock -= 1
-            db.session.add(item)
-
-        db.session.commit()
-        db.session.close()
-
-        return "stock subtracted", 200
+        with app.app_context():
+            return update_stock({id_: Item.stock - 1 for id_ in request_body['item_ids']})
 
     @staticmethod
-    def _increase_items(item_ids):
+    def _increase_items(request_body):
         """
-            This is a rollback function. Following the SAGA pattern.
-            :return:
-            """
-        logging.debug(f"Increase the items for request:")
-        logging.debug(f"{item_ids =}")
+        This is a rollback function. Following the SAGA pattern.
+        Increases all items in the list from stock by the amount of 1
+        Pass in an 'request_body' containing an 'item_ids' array
+        :return:
+        """
+        logging.debug(f"Increase the items for request: {request_body['item_ids']}")
 
-        # Increases stock of all items by 1
-        items = db.session.query(Item).filter(
-            Item.id.in_(item_ids['item_ids'])
-        )
-
-        item: Item
-        for item in items:
-            item.stock += 1
-            db.session.add(item)
-
-        db.session.commit()
-        db.session.close()
-        return "stock increased", 200
+        with app.app_context():
+            return update_stock({id_: Item.stock + 1 for id_ in request_body['item_ids']})
 
 
 consumer = Consumer()
