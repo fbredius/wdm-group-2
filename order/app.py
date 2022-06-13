@@ -5,6 +5,8 @@ import os
 import shutil
 import uuid
 from http import HTTPStatus
+from time import sleep
+
 import pika
 import requests
 from flask import Flask, make_response, jsonify
@@ -42,6 +44,12 @@ db = SQLAlchemy(app)
 # Setup an AMQP connection for this service
 connection = pika.BlockingConnection(pika.ConnectionParameters(host='rabbitmq', heartbeat=None))  # Change to environment variable
 atexit.register(connection.close)
+
+
+def reconnect_amqp():
+    global connection
+    connection = pika.BlockingConnection(pika.ConnectionParameters(host='rabbitmq', heartbeat=None))
+
 
 PROMETHEUS_MULTIPROC_DIR = os.environ["PROMETHEUS_MULTIPROC_DIR"]
 # make sure the dir is clean
@@ -217,6 +225,11 @@ def checkout(order_id):
     if order.paid:
         app.logger.debug(f"Order already paid")
         return make_response("Order already paid", HTTPStatus.BAD_REQUEST)
+
+    if not connection or connection.is_closed:
+        app.logger.debug(f"AMQP Connection lost, reconnecting...")
+        reconnect_amqp()
+        sleep(1)
 
     # Setup RabbitMQ producers for the stock and payment requests
     stock_producer = Producer(connection, "stock")
