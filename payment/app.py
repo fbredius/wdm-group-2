@@ -4,14 +4,12 @@ import shutil
 import uuid
 from http import HTTPStatus
 
-# from flask import Flask, make_response, jsonify, Response
 from flask_sqlalchemy import SQLAlchemy
 from prometheus_client import CollectorRegistry, multiprocess, Summary, CONTENT_TYPE_LATEST, generate_latest
 from sqlalchemy import CheckConstraint
-from quart import Quart, make_response, jsonify, Response, request
+from quart import Quart, make_response, jsonify, Response
 
 app_name = 'payment-service'
-# app = Flask(app_name)
 app = Quart(app_name)
 logging.getLogger(app_name).setLevel(os.environ.get('LOGLEVEL', 'DEBUG'))
 

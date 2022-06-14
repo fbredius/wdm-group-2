@@ -1,4 +1,3 @@
-import os
 import logging
 import os
 import shutil
@@ -7,9 +6,6 @@ from http import HTTPStatus
 from typing import Dict
 
 import sqlalchemy.exc
-# from flask import Flask, make_response, jsonify
-# from flask import Response
-# from flask import request
 from flask_sqlalchemy import SQLAlchemy
 from prometheus_client import CollectorRegistry, multiprocess, generate_latest, CONTENT_TYPE_LATEST, Summary
 from quart import Quart, make_response, jsonify, Response, request
@@ -19,7 +15,6 @@ logging.basicConfig()
 logging.getLogger('sqlalchemy.engine').setLevel(logging.INFO)
 
 app_name = 'stock-service'
-# app = Flask(app_name)
 app = Quart(app_name)
 logging.getLogger(app_name).setLevel(os.environ.get('LOGLEVEL', 'DEBUG'))
 
@@ -166,17 +161,21 @@ async def update_stock(amounts: Dict[str, int]):
             db.session.commit()
         except sqlalchemy.exc.IntegrityError:
             app.logger.debug(f"Violated constraint for item when subtracting items")
-            response = await make_response("Not enough stock", HTTPStatus.BAD_REQUEST)
+            message = "Not enough stock"
+            response = await make_response(message, HTTPStatus.BAD_REQUEST)
             db.session.rollback()
         else:
             if items_affected != len(amounts):
-                response = await make_response("Stock subtracting failed for at least 1 item", HTTPStatus.BAD_REQUEST)
+                message = "Stock subtracting failed for at least 1 item"
+                response = await make_response(message, HTTPStatus.BAD_REQUEST)
             else:
-                response = await make_response("stock subtracted", HTTPStatus.OK)
+                message = "stock subtracted"
+                response = await make_response(message, HTTPStatus.OK)
     else:
         app.logger.warning("Items subtract call with no items")
-        response = await make_response("No items in request", HTTPStatus.OK)
-    app.logger.debug(f"Update stock response {response.response}, : {response.status_code}")
+        message = "No items in request"
+        response = await make_response(message, HTTPStatus.OK)
+    app.logger.debug(f"Update stock response {message}, : {response.status_code}")
 
     db.session.close()
     return response
