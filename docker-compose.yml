@@ -46,7 +46,8 @@ services:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
-    command: gunicorn -b 0.0.0.0:5000 app:app --timeout 0
+#    command: gunicorn -b 0.0.0.0:5000 app:app --timeout 0
+    command: uvicorn app:app --host 0.0.0.0 --port 5000
     env_file:
       - env/stock_postgres.env
 
@@ -74,7 +75,8 @@ services:
   payment-service:
     build: ./payment
     image: europe-west4-docker.pkg.dev/versatile-field-350813/web-scale-repository/user:latest
-    command: gunicorn -b 0.0.0.0:5000 app:app  --timeout 0
+#    command: gunicorn -b 0.0.0.0:5000 app:app  --timeout 0
+    command: uvicorn app:app --host 0.0.0.0 --port 5000
     depends_on:
       payment-postgres-service:
         condition: service_healthy

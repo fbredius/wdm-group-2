@@ -4,13 +4,15 @@ import shutil
 import uuid
 from http import HTTPStatus
 
-from flask import Flask, make_response, jsonify, Response
+# from flask import Flask, make_response, jsonify, Response
 from flask_sqlalchemy import SQLAlchemy
 from prometheus_client import CollectorRegistry, multiprocess, Summary, CONTENT_TYPE_LATEST, generate_latest
 from sqlalchemy import CheckConstraint
+from quart import Quart, make_response, jsonify, Response, request
 
 app_name = 'payment-service'
-app = Flask(app_name)
+# app = Flask(app_name)
+app = Quart(app_name)
 logging.getLogger(app_name).setLevel(os.environ.get('LOGLEVEL', 'DEBUG'))
 
 DB_URL = 'postgresql+psycopg2://{user}:{pw}@{host}/{db}' \
@@ -99,9 +101,9 @@ def construct_payment_id(user_id, order_id):
     return user_id + '/' + order_id
 
 
-@app.post('/create_user')
 @create_order_metric.time()
-def create_user():
+@app.post('/create_user')
+async def create_user():
     """
     Creates a user with 0 credit
     :return: the user's id
@@ -111,12 +113,12 @@ def create_user():
     db.session.add(user)
     db.session.commit()
     db.session.close()
-    return make_response(jsonify({"user_id": idx}), HTTPStatus.OK)
+    return await make_response(jsonify({"user_id": idx}), HTTPStatus.OK)
 
 
-@app.get('/find_user/<user_id>')
 @find_user_metric.time()
-def find_user(user_id: str):
+@app.get('/find_user/<user_id>')
+async def find_user(user_id: str):
     """
     Returns the user information
     :param user_id:
@@ -125,9 +127,9 @@ def find_user(user_id: str):
     return User.query.get_or_404(user_id).as_dict()
 
 
-@app.post('/add_funds/<user_id>/<amount>')
 @add_credit_metric.time()
-def add_credit(user_id: str, amount: float):
+@app.post('/add_funds/<user_id>/<amount>')
+async def add_credit(user_id: str, amount: float):
     """
     Adds funds (amount) to the user's account
     :param user_id:
@@ -143,16 +145,16 @@ def add_credit(user_id: str, amount: float):
         db.session.close()
         done = True
 
-    return make_response(jsonify({"done": done}), HTTPStatus.OK)
+    return await make_response(jsonify({"done": done}), HTTPStatus.OK)
 
 
-@app.post('/pay/<user_id>/<order_id>/<amount>')
 @pay_metric.time()
-def pay(user_id: str, order_id: str, amount: float):
-    return remove_credit(amount, order_id, user_id)
+@app.post('/pay/<user_id>/<order_id>/<amount>')
+async def pay(user_id: str, order_id: str, amount: float):
+    return await remove_credit(amount, order_id, user_id)
 
 
-def remove_credit(amount, order_id, user_id):
+async def remove_credit(amount, order_id, user_id):
     """
     Subtracts the amount of the order from the user's credit
     Returns failure if credit is not enough
@@ -166,7 +168,7 @@ def remove_credit(amount, order_id, user_id):
     amount = float(amount)
     if user.credit < amount:
         app.logger.debug(f"{user.credit = } is smaller than {amount =} of credit to remove")
-        response = make_response("Not enough credit", HTTPStatus.FORBIDDEN)
+        response = await make_response("Not enough credit", HTTPStatus.FORBIDDEN)
     else:
         user.credit = user.credit - amount
         db.session.add(user)
@@ -176,18 +178,18 @@ def remove_credit(amount, order_id, user_id):
         app.logger.debug(f"succesfully removed {amount} credit from user with id {user_id}")
         db.session.commit()
         db.session.close()
-        response = make_response("Credit removed", HTTPStatus.OK)
+        response = await make_response("Credit removed", HTTPStatus.OK)
     app.logger.debug(f"Remove credit result, {response}")
     return response
 
 
-@app.post('/cancel/<user_id>/<order_id>')
 @cancel_metric.time()
-def cancel(user_id: str, order_id: str):
-    return cancel_payment(order_id, user_id)
+@app.post('/cancel/<user_id>/<order_id>')
+async def cancel(user_id: str, order_id: str):
+    return await cancel_payment(order_id, user_id)
 
 
-def cancel_payment(order_id, user_id):
+async def cancel_payment(order_id, user_id):
     """
     Cancels the payment made by a specific user for a specific order
     :param user_id:
@@ -202,14 +204,14 @@ def cancel_payment(order_id, user_id):
     db.session.add(user)
     db.session.commit()
     db.session.close()
-    response = make_response("payment reset", HTTPStatus.OK)
+    response = await make_response("payment reset", HTTPStatus.OK)
     app.logger.debug(f"Cancel payment result, {response}")
     return response
 
 
-@app.post('/status/<user_id>/<order_id>')
 @payment_status_metric.time()
-def payment_status(user_id: str, order_id: str):
+@app.post('/status/<user_id>/<order_id>')
+async def payment_status(user_id: str, order_id: str):
     """
     Returns the status of the payment
     :param user_id:
@@ -223,13 +225,13 @@ def payment_status(user_id: str, order_id: str):
         paid = payment.paid
 
     app.logger.debug(f"Order with order id: {order_id} ({user_id = }, paid status: {paid}")
-    return make_response(jsonify({"paid": paid}), HTTPStatus.OK)
+    return await make_response(jsonify({"paid": paid}), HTTPStatus.OK)
 
 
 @app.delete('/clear_tables')
-def clear_tables():
+async def clear_tables():
     recreate_tables()
-    return make_response("tables cleared", HTTPStatus.OK)
+    return await make_response("tables cleared", HTTPStatus.OK)
 
 
 @app.route("/metrics")

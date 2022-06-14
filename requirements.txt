@@ -24,3 +24,4 @@ zipp==3.8.0
 prometheus_client
 quart==0.17.0
 uvicorn==0.17.6
+aio-pika==8.0.3

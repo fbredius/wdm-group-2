@@ -21,7 +21,7 @@ from prometheus_client import (
 from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.types import String, Float, Boolean
-from producer import Producer
+from producer import RpcClient
 from quart import Quart, make_response, jsonify, Response
 
 app_name = 'order-service'
@@ -205,7 +205,7 @@ async def find_order(order_id):
     :param order_id:
     :return: Order { order_id, paid, items, user_id, total_cost }
     """
-    return await Order.query.get_or_404(order_id).as_dict()
+    return Order.query.get_or_404(order_id).as_dict()
 
 
 @checkout_metric.time()
@@ -229,39 +229,51 @@ async def checkout(order_id):
         app.logger.debug(f"Order already paid")
         return make_response("Order already paid", HTTPStatus.BAD_REQUEST)
 
-    if not connection or connection.is_closed:
-        app.logger.debug(f"AMQP Connection lost, reconnecting...")
-        reconnect_amqp()
-        sleep(1)
+    # if not connection or connection.is_closed:
+    #     app.logger.debug(f"AMQP Connection lost, reconnecting...")
+    #     reconnect_amqp()
+    #     sleep(1)
 
     # Setup RabbitMQ producers for the stock and payment requests
-    stock_producer = Producer(connection, "stock")
-    payment_producer = Producer(connection, "payment")
+    # stock_producer = Producer(connection, "stock")
+    # payment_producer = Producer(connection, "payment")
+    stock_producer = await RpcClient("stock").connect()
+    payment_producer = await RpcClient("payment").connect()
+
+    stock_body = json.dumps({"item_ids": order.items})
+    payment_body = json.dumps({"user_id": order.user_id, "order_id": order.id, "total_cost": order.total_cost})
+    stock_response, payment_response = await asyncio.gather(payment_producer.publish(payment_body, "pay", reply=True),
+                                                            stock_producer.publish(stock_body, "subtractItems", reply=True))
 
     # Subtract Stock
-    stock_body = subtract_stock(order, stock_producer)
+    # stock_body = subtract_stock(order, stock_producer)
 
     # Handle Payment
-    payment_body = handle_payment(order, payment_producer)
+    # payment_body = handle_payment(order, payment_producer)
 
     # Handle Transaction
-    stock_producer.consume()
-    payment_producer.consume()
+    # stock_producer.consume()
+    # payment_producer.consume()
 
     # TODO Add time-out
-    listen_for_events(payment_producer, stock_producer)
+    # listen_for_events(payment_producer, stock_producer)
 
     # Handle Rollback according to SAGA Pattern
-    if not status_code_is_success(int(payment_producer.status)) \
-            or not status_code_is_success(int(stock_producer.status)):
-        return await handle_rollback(payment_producer, stock_producer, payment_body, stock_body)
+    # if not status_code_is_success(int(payment_producer.status)) \
+    #         or not status_code_is_success(int(stock_producer.status)):
+    #     return await handle_rollback(payment_producer, stock_producer, payment_body, stock_body)
+
+    if not status_code_is_success(int(payment_response["status"])) \
+            or not status_code_is_success(int(stock_response["status"])):
+        return await handle_rollback(payment_producer, stock_producer, payment_body, stock_body,
+                                     payment_response, stock_response)
 
     # If success set Order status to 'paid'
-    set_order_to_paid(order)
+    await set_order_to_paid(order)
 
     # Close RabbitMQ connection
-    stock_producer.close()
-    payment_producer.close()
+    # stock_producer.close()
+    # payment_producer.close()
 
     return await make_response("Order successful", HTTPStatus.OK)
 
@@ -270,30 +282,50 @@ def status_code_is_success(status_code):
     return HTTPStatus.OK <= status_code < HTTPStatus.MULTIPLE_CHOICES
 
 
-async def handle_rollback(payment_producer, stock_producer, payment_body, stock_body):
-    if not status_code_is_success(int(payment_producer.status)):
+async def handle_rollback(payment_producer, stock_producer, payment_body, stock_body, payment_response, stock_response):
+    if not status_code_is_success(int(payment_response["status"])):
         # Rollback Stock subtraction if Payment fails and Stock subtraction was success
-        if status_code_is_success(int(stock_producer.status)):
+        if status_code_is_success(int(stock_response["status"])):
             stock_producer.publish(stock_body, "increaseItems", reply=False)
 
-        # Close RabbitMQ connection
-        stock_producer.close()
-        payment_producer.close()
+        message = payment_response["message"]
+        app.logger.debug(f"Payment response code not success, {message}")
+        return await make_response(message, HTTPStatus.BAD_REQUEST)
 
-        app.logger.debug(f"Payment response code not success, {payment_producer.response.decode()}")
-        return await make_response(payment_producer.response.decode(), HTTPStatus.BAD_REQUEST)
-
-    if not status_code_is_success(int(stock_producer.status)):
+    if not status_code_is_success(int(stock_response["status"])):
         # Rollback Payment if Stock subtraction fails and Payment was success
-        if status_code_is_success(int(payment_producer.status)):
+        if status_code_is_success(int(payment_response["status"])):
             payment_producer.publish(payment_body, "cancel", reply=False)
 
-        # Close RabbitMQ connection
-        stock_producer.close()
-        payment_producer.close()
+        message = stock_response["message"]
+        app.logger.debug(f"Stock response code not success, {message}")
+        return await make_response(message, HTTPStatus.BAD_REQUEST)
 
-        app.logger.debug(f"Stock response code not success, {stock_producer.response.decode()}")
-        return await make_response(stock_producer.response.decode(), HTTPStatus.BAD_REQUEST)
+# async def handle_rollback(payment_producer, stock_producer, payment_body, stock_body):
+#     if not status_code_is_success(int(payment_producer.status)):
+#         # Rollback Stock subtraction if Payment fails and Stock subtraction was success
+#         if status_code_is_success(int(stock_producer.status)):
+#             stock_producer.publish(stock_body, "increaseItems", reply=False)
+#
+#         # Close RabbitMQ connection
+#         stock_producer.close()
+#         payment_producer.close()
+#
+#         app.logger.debug(f"Payment response code not success, {payment_producer.response.decode()}")
+#         return await make_response(payment_producer.response.decode(), HTTPStatus.BAD_REQUEST)
+#
+#     if not status_code_is_success(int(stock_producer.status)):
+#         # Rollback Payment if Stock subtraction fails and Payment was success
+#         if status_code_is_success(int(payment_producer.status)):
+#             payment_producer.publish(payment_body, "cancel", reply=False)
+#
+#         # Close RabbitMQ connection
+#         stock_producer.close()
+#         payment_producer.close()
+#
+#         app.logger.debug(f"Stock response code not success, {stock_producer.response.decode()}")
+#         return await make_response(stock_producer.response.decode(), HTTPStatus.BAD_REQUEST)
+
 
 
 async def set_order_to_paid(order):
@@ -310,19 +342,21 @@ def listen_for_events(payment_producer, stock_producer):
         payment_producer.connection.process_data_events()
 
 
-def handle_payment(order, payment_producer):
+async def handle_payment(order, payment_producer):
     payment_request_url = f"{payment_url}/pay/{order.user_id}/{order.id}/{order.total_cost}"
     app.logger.debug(f"requesting payment for {order.total_cost} to {payment_request_url}")
     payment_body = json.dumps({"user_id": order.user_id, "order_id": order.id, "total_cost": order.total_cost})
-    payment_producer.publish(payment_body, "pay", reply=True)
-    return payment_body
+    # payment_producer.publish(payment_body, "pay", reply=True)
+    # return payment_body
+    return await payment_producer.publish(payment_body, "pay", reply=True)
 
 
-def subtract_stock(order, stock_producer):
+async def subtract_stock(order, stock_producer):
     app.logger.debug(f"sending request to stock-service at {stock_url} with order: {order.as_dict()}")
     stock_body = json.dumps({"item_ids": order.items})
-    stock_producer.publish(stock_body, "subtractItems", reply=True)
-    return stock_body
+    # stock_producer.publish(stock_body, "subtractItems", reply=True)
+    # return stock_body
+    return await stock_producer.publish(stock_body, "subtractItems", reply=True)
 
 
 @app.delete('/clear_tables')

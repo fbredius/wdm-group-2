@@ -8,3 +8,4 @@ pika==1.2.1
 prometheus-client
 quart==0.17.0
 uvicorn==0.17.6
+aio-pika==8.0.3
