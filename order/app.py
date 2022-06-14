@@ -1,3 +1,4 @@
+import asyncio
 import atexit
 import json
 import logging
@@ -9,8 +10,8 @@ from time import sleep
 
 import pika
 import requests
-from flask import Flask, make_response, jsonify
-from flask import Response
+# from flask import Flask, make_response, jsonify
+# from flask import Response
 from flask_sqlalchemy import SQLAlchemy
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
@@ -21,10 +22,11 @@ from sqlalchemy.dialects.postgresql import ARRAY
 from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.types import String, Float, Boolean
 from producer import Producer
-
+from quart import Quart, make_response, jsonify, Response
 
 app_name = 'order-service'
-app = Flask(app_name)
+# app = Flask(app_name)
+app = Quart(app_name)
 logging.getLogger(app_name).setLevel(os.environ.get('LOGLEVEL', 'DEBUG'))
 
 stock_url = f'http://{os.environ["STOCK_SERVICE_URL"]}'
@@ -107,26 +109,27 @@ find_order_metric = Histogram("find_order", "Histogram of /find/<order_id>")
 checkout_metric = Histogram("checkout", "Histogram of /checkout/<order_id>")
 
 
-@app.post('/create/<user_id>')
 @create_order_metric.time()
 @total_time_metric.time()
-def create_order(user_id):
+@app.post('/create/<user_id>')
+async def create_order(user_id):
     """
     Creates an order for the given user, and returns an order_id
     :param user_id:
     :return: the order's id
     """
     idx = str(uuid.uuid4())
+    app.logger.debug(f"ID IS:          {idx}")
     order = Order(idx, False, [], user_id, 0)
     db.session.add(order)
     db.session.commit()
-    return make_response(jsonify({"order_id": idx}), HTTPStatus.OK)
+    return await make_response(jsonify({"order_id": idx}), HTTPStatus.OK)
 
 
-@app.delete('/remove/<order_id>')
 @remove_order_metric.time()
 @total_time_metric.time()
-def remove_order(order_id):
+@app.delete('/remove/<order_id>')
+async def remove_order(order_id):
     """
     Deletes an order by ID
     :param order_id:
@@ -134,13 +137,13 @@ def remove_order(order_id):
     """
     Order.query.filter_by(id=order_id).delete()
     db.session.commit()
-    return make_response('success', HTTPStatus.OK)
+    return await make_response('success', HTTPStatus.OK)
 
 
-@app.post('/addItem/<order_id>/<item_id>')
 @add_item_metric.time()
 @total_time_metric.time()
-def add_item(order_id, item_id):
+@app.post('/addItem/<order_id>/<item_id>')
+async def add_item(order_id, item_id):
     """
     Adds a given item in the order given
     :param order_id:
@@ -164,13 +167,13 @@ def add_item(order_id, item_id):
     db.session.flush()
     db.session.commit()
     app.logger.debug(f"Added item to {order_id = }, {item_id =}, {order.items = }")
-    return make_response("Item added to order", HTTPStatus.OK)
+    return await make_response("Item added to order", HTTPStatus.OK)
 
 
-@app.delete('/removeItem/<order_id>/<item_id>')
 @remove_order_metric.time()
 @total_time_metric.time()
-def remove_item(order_id, item_id):
+@app.delete('/removeItem/<order_id>/<item_id>')
+async def remove_item(order_id, item_id):
     """
     Removes the given item from the given order
     :param order_id:
@@ -190,25 +193,25 @@ def remove_item(order_id, item_id):
 
     db.session.add(order)
     db.session.commit()
-    return make_response("Item removed from order", HTTPStatus.OK)
+    return await make_response("Item removed from order", HTTPStatus.OK)
 
 
-@app.get('/find/<order_id>')
 @find_order_metric.time()
 @total_time_metric.time()
-def find_order(order_id):
+@app.get('/find/<order_id>')
+async def find_order(order_id):
     """
     Retrieves the information of an order
     :param order_id:
     :return: Order { order_id, paid, items, user_id, total_cost }
     """
-    return Order.query.get_or_404(order_id).as_dict()
+    return await Order.query.get_or_404(order_id).as_dict()
 
 
-@app.post('/checkout/<order_id>')
 @checkout_metric.time()
 @total_time_metric.time()
-def checkout(order_id):
+@app.post('/checkout/<order_id>')
+async def checkout(order_id):
     """
     Handle the checkout.
     First we talk to the stock service to subtract the items.
@@ -251,7 +254,7 @@ def checkout(order_id):
     # Handle Rollback according to SAGA Pattern
     if not status_code_is_success(int(payment_producer.status)) \
             or not status_code_is_success(int(stock_producer.status)):
-        return handle_rollback(payment_producer, stock_producer, payment_body, stock_body)
+        return await handle_rollback(payment_producer, stock_producer, payment_body, stock_body)
 
     # If success set Order status to 'paid'
     set_order_to_paid(order)
@@ -260,14 +263,14 @@ def checkout(order_id):
     stock_producer.close()
     payment_producer.close()
 
-    return make_response("Order successful", HTTPStatus.OK)
+    return await make_response("Order successful", HTTPStatus.OK)
 
 
 def status_code_is_success(status_code):
     return HTTPStatus.OK <= status_code < HTTPStatus.MULTIPLE_CHOICES
 
 
-def handle_rollback(payment_producer, stock_producer, payment_body, stock_body):
+async def handle_rollback(payment_producer, stock_producer, payment_body, stock_body):
     if not status_code_is_success(int(payment_producer.status)):
         # Rollback Stock subtraction if Payment fails and Stock subtraction was success
         if status_code_is_success(int(stock_producer.status)):
@@ -278,7 +281,7 @@ def handle_rollback(payment_producer, stock_producer, payment_body, stock_body):
         payment_producer.close()
 
         app.logger.debug(f"Payment response code not success, {payment_producer.response.decode()}")
-        return make_response(payment_producer.response.decode(), HTTPStatus.BAD_REQUEST)
+        return await make_response(payment_producer.response.decode(), HTTPStatus.BAD_REQUEST)
 
     if not status_code_is_success(int(stock_producer.status)):
         # Rollback Payment if Stock subtraction fails and Payment was success
@@ -290,10 +293,10 @@ def handle_rollback(payment_producer, stock_producer, payment_body, stock_body):
         payment_producer.close()
 
         app.logger.debug(f"Stock response code not success, {stock_producer.response.decode()}")
-        return make_response(stock_producer.response.decode(), HTTPStatus.BAD_REQUEST)
+        return await make_response(stock_producer.response.decode(), HTTPStatus.BAD_REQUEST)
 
 
-def set_order_to_paid(order):
+async def set_order_to_paid(order):
     order.paid = True
     db.session.add(order)
     db.session.commit()
@@ -323,13 +326,13 @@ def subtract_stock(order, stock_producer):
 
 
 @app.delete('/clear_tables')
-def clear_tables():
+async def clear_tables():
     recreate_tables()
-    return make_response("tables cleared", HTTPStatus.OK)
+    return await make_response("tables cleared", HTTPStatus.OK)
 
 
 @app.route("/metrics")
-def metrics():
+async def metrics():
     data = generate_latest(registry)
     app.logger.debug(f"Metrics, returning: {data}")
-    return Response(data, mimetype=CONTENT_TYPE_LATEST)
+    return await Response(data, mimetype=CONTENT_TYPE_LATEST)

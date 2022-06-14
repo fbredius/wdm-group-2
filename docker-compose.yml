@@ -16,7 +16,8 @@ services:
     image: europe-west4-docker.pkg.dev/versatile-field-350813/web-scale-repository/order:latest
     environment:
       - GATEWAY_URL=http://gateway:80
-    command: gunicorn -b 0.0.0.0:5000 app:app --timeout 0
+#    command: gunicorn -b 0.0.0.0:5000 app:app --timeout 0
+    command: uvicorn app:app --host 0.0.0.0 --port 5000
     depends_on:
       order-postgres-service:
         condition: service_healthy
