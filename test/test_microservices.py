@@ -1,3 +1,5 @@
+import asyncio
+import time
 import unittest
 
 import utils as tu
@@ -140,6 +142,93 @@ class TestMicroservices(unittest.TestCase):
 
         credit: int = tu.find_user(user_id)['credit']
         self.assertEqual(credit, 5)
+
+    def test_refund(self):
+        # Add item to the stock service
+        item1: dict = tu.create_item(5)
+        self.assertTrue('item_id' in item1)
+        item_id1: str = item1['item_id']
+        add_stock_response = tu.add_stock(item_id1, 1)
+        self.assertTrue(tu.status_code_is_success(add_stock_response))
+
+        # Create a user with 15 credits and add item1 to the order
+        user: dict = tu.create_user()
+        user_id: str = user['user_id']
+        self.assertTrue('user_id' in user)
+
+        add_credit_response = tu.add_credit_to_user(user_id, 15)
+        self.assertTrue(tu.status_code_is_success(int(add_credit_response)))
+
+        credit: int = tu.find_user(user_id)['credit']
+        self.assertEqual(credit, 15)
+
+        order: dict = tu.create_order(user_id)
+        order_id: str = order['order_id']
+        self.assertTrue('order_id' in order)
+
+        add_item_response = tu.add_item_to_order(order_id, item_id1)
+        self.assertTrue(tu.status_code_is_success(add_item_response))
+
+        # Create a second user with 15 credits and add item1 to the order
+        user2: dict = tu.create_user()
+        user_id2: str = user2['user_id']
+        self.assertTrue('user_id' in user2)
+
+        add_credit_response = tu.add_credit_to_user(user_id2, 15)
+        self.assertTrue(tu.status_code_is_success(int(add_credit_response)))
+
+        credit: int = tu.find_user(user_id2)['credit']
+        self.assertEqual(credit, 15)
+
+        order2: dict = tu.create_order(user_id2)
+        order_id2: str = order2['order_id']
+        self.assertTrue('order_id' in order2)
+
+        add_item_response = tu.add_item_to_order(order_id2, item_id1)
+        self.assertTrue(tu.status_code_is_success(add_item_response))
+
+
+        # Stock of item1 should be 1 before the two order checkouts and 1 after the checkouts
+        stock: int = tu.find_item(item_id1)['stock']
+        self.assertEqual(stock, 1)
+
+        loop = asyncio.get_event_loop()
+        loop.run_until_complete(async_order([order_id, order_id2]))
+
+        stock: int = tu.find_item(item_id1)['stock']
+        self.assertEqual(stock, 0)
+
+        # Only one order should go through, so one of the users should be refunded
+        credit_after_payment: int = tu.find_user(user_id)['credit']
+        credit_after_payment2: int = tu.find_user(user_id2)['credit']
+        self.assertEqual(credit_after_payment + credit_after_payment2, 25)
+
+    def test_dumb_latency_test(self):
+        start = time.time()
+        n = 500
+        loop = asyncio.get_event_loop()
+        user_id = tu.create_user()['user_id']
+        loop.run_until_complete(async_reqs(n, user_id))
+        took = time.time() - start
+        print(f"{n} requests took {took :.2f} seconds, that is {took / 1000 :.3f} ms on average")
+
+        print(tu.find_user(user_id))
+
+
+async def async_reqs(n, user_id):
+    import asyncio
+    loop = asyncio.get_event_loop()
+    for _ in range(n):
+        fut = loop.run_in_executor(None, tu.add_credit_to_user, user_id, 10)
+    await fut
+
+
+async def async_order(order_ids):
+    import asyncio
+    loop = asyncio.get_event_loop()
+    for order_id in order_ids:
+        fut = loop.run_in_executor(None, tu.checkout_order, order_id)
+    await fut
 
 
 if __name__ == '__main__':
