@@ -214,7 +214,6 @@ async def checkout(order_id):
         app.logger.debug(f"Order already paid")
         return make_response("Order already paid", HTTPStatus.BAD_REQUEST)
 
-
     # Setup RabbitMQ producers for the stock and payment requests
     stock_producer = await Producer("stock").connect()
     payment_producer = await Producer("payment").connect()
@@ -281,4 +280,4 @@ async def clear_tables():
 async def metrics():
     data = generate_latest(registry)
     app.logger.debug(f"Metrics, returning: {data}")
-    return await Response(data, mimetype=CONTENT_TYPE_LATEST)
+    return Response(data, mimetype=CONTENT_TYPE_LATEST)

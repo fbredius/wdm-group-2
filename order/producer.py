@@ -1,9 +1,8 @@
 #!/usr/bin/env python
 import uuid
-
 import asyncio
-from typing import MutableMapping
 
+from typing import MutableMapping
 from aio_pika import Message, connect
 from aio_pika.abc import (
     AbstractChannel, AbstractConnection, AbstractIncomingMessage, AbstractQueue, DeliveryMode,

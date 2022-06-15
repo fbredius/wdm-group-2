@@ -1,13 +1,10 @@
 #!/usr/bin/env python
 import json
 import logging
-
 import asyncio
 
 from aio_pika import Message, connect
-
 from aio_pika.abc import AbstractIncomingMessage
-
 from app import app, Item, update_stock
 
 logging.basicConfig()

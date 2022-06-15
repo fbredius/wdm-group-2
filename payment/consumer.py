@@ -1,14 +1,11 @@
 #!/usr/bin/env python
 import json
 import logging
-
-from app import app, remove_credit, cancel_payment
-
 import asyncio
 
 from aio_pika import Message, connect
-
 from aio_pika.abc import AbstractIncomingMessage
+from app import app, remove_credit, cancel_payment
 
 logging.basicConfig()
 logging.getLogger().setLevel(logging.DEBUG)
