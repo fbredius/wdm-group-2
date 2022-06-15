@@ -259,7 +259,7 @@ def status_code_is_success(status_code):
 async def handle_rollback(payment_producer, stock_producer, payment_body, stock_body, payment_response, stock_response):
     message = ""
     if not status_code_is_success(int(payment_response["status"])):
-        logger.debug(f"Payment response code not success, {message}. Order id: {payment_body['order_id']}")
+        logger.debug(f"Payment response code not success, {message}. payment body {payment_body}")
         # Rollback Stock subtraction if Payment fails and Stock subtraction was success
         if status_code_is_success(int(stock_response["status"])):
             logger.debug(
@@ -269,7 +269,7 @@ async def handle_rollback(payment_producer, stock_producer, payment_body, stock_
         message += payment_response["message"] + "\t\t"
 
     if not status_code_is_success(int(stock_response["status"])):
-        logger.debug(f"Stock response code not success, {message}. Order id: {payment_body['order_id']}")
+        logger.debug(f"Stock response code not success, {message}. payment body {payment_body}")
         # Rollback Payment if Stock subtraction fails and Payment was success
         if status_code_is_success(int(payment_response["status"])):
             logger.debug(
