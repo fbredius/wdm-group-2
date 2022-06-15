@@ -1,36 +1,20 @@
-apiVersion: v1
-kind: Service
-metadata:
-  name: stock-service
-  labels:
-    app: order-service
-    type: app-service
-spec:
-  type: ClusterIP
-  selector:
-    component: stock
-  ports:
-    - port: 5000
-      name: http
-      targetPort: 5000
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: stock-deployment
+  name: stock-queue-deployment
 spec:
   replicas: 1
   selector:
     matchLabels:
-      component: stock
+      component: stock-queue
   template:
     metadata:
       labels:
-        component: stock
+        component: stock-queue
     spec:
       containers:
-        - name: stock
-          image: europe-west4-docker.pkg.dev/versatile-field-350813/web-scale-repository/stock:latest
+        - name: stock-queue
+          image: europe-west4-docker.pkg.dev/versatile-field-350813/web-scale-repository/stock-queue:latest
           imagePullPolicy: Always
           resources:
             limits:
@@ -39,10 +23,8 @@ spec:
             requests:
               memory: "1Gi"
               cpu: "1"
-          command: [ "uvicorn" ]
-          args: [ "app:app", "--host", "0.0.0.0", "--port", "5000" ]
-          ports:
-            - containerPort: 5000
+          command: [ "python" ]
+          args: [ "consumer.py" ]
           env:
             - name: GATEWAY_URL
               value: "nginx-ingress-nginx-controller"
@@ -60,3 +42,4 @@ spec:
               value: "stock-postgres-service-replica"
             - name: PROMETHEUS_MULTIPROC_DIR
               value: "/tmp/prometheus"
+

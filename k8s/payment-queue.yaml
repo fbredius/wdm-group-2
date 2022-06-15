@@ -1,36 +1,20 @@
-apiVersion: v1
-kind: Service
-metadata:
-  name: payment-service
-  labels:
-    app: order-service
-    type: app-service
-spec:
-  type: ClusterIP
-  selector:
-    component: user
-  ports:
-    - port: 5000
-      name: http
-      targetPort: 5000
----
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  name: user-deployment
+  name: payment-queue-deployment
 spec:
   replicas: 1
   selector:
     matchLabels:
-      component: user
+      component: payment-queue
   template:
     metadata:
       labels:
-        component: user
+        component: payment-queue
     spec:
       containers:
-        - name: user
-          image: europe-west4-docker.pkg.dev/versatile-field-350813/web-scale-repository/user:latest
+        - name: payment-queue
+          image: europe-west4-docker.pkg.dev/versatile-field-350813/web-scale-repository/payment-queue:latest
           imagePullPolicy: Always
           resources:
             limits:
@@ -39,10 +23,8 @@ spec:
             requests:
               memory: "1Gi"
               cpu: "1"
-          command: [ "uvicorn" ]
-          args: [ "app:app", "--host", "0.0.0.0", "--port", "5000" ]
-          ports:
-            - containerPort: 5000
+          command: [ "python" ]
+          args: [ "consumer.py" ]
           env:
             - name: GATEWAY_URL
               value: "nginx-ingress-nginx-controller"
@@ -58,3 +40,4 @@ spec:
               value: "user-postgres-service-replica"
             - name: PROMETHEUS_MULTIPROC_DIR
               value: "/tmp/prometheus"
+

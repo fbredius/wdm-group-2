@@ -127,6 +127,11 @@ ingress to the cluster.
     - go to localhost:3000
     - login with uname: admin, password: prom-operator
 
+- Accessing Rabbitmq:
+    - kubectl port-forward kubectl port-forward service/rabbitmqcluster 15672:15672
+    - go to localhost:15672
+    - login with guest/guest
+
 ## Known issues
 
 1. Postgres replicas fail to start and ask for passwords in the logs. (logs fully filled with 'password:')

@@ -1,14 +1,16 @@
 #!/usr/bin/env python
+import asyncio
 import json
 import logging
-import asyncio
+import os
 
 from aio_pika import Message, connect
 from aio_pika.abc import AbstractIncomingMessage
+
 from app import app, remove_credit, cancel_payment
 
 logging.basicConfig()
-logging.getLogger().setLevel(logging.DEBUG)
+logging.getLogger().setLevel(os.environ.get('LOG_LEVEL', logging.INFO))
 
 
 async def pay(user_id: str, order_id: str, amount: float):

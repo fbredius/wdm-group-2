@@ -1,14 +1,16 @@
 #!/usr/bin/env python
+import asyncio
 import json
 import logging
-import asyncio
+import os
 
 from aio_pika import Message, connect
 from aio_pika.abc import AbstractIncomingMessage
+
 from app import app, Item, update_stock
 
 logging.basicConfig()
-logging.getLogger().setLevel(logging.DEBUG)
+logging.getLogger().setLevel(os.environ.get('LOG_LEVEL', logging.INFO))
 
 
 async def subtract_items(request_body):
