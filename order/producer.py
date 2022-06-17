@@ -23,25 +23,29 @@ class Connection:
 
 
 class Producer:
-    # connection: AbstractConnection
+    connection: AbstractConnection
     channel: AbstractChannel
     callback_queue: AbstractQueue
 
-    def __init__(self, connection, queue) -> None:
+    def __init__(self, queue) -> None:
         self.futures: MutableMapping[str, asyncio.Future] = {}
         self.loop = asyncio.get_running_loop()
         self.queue = queue
-        self.connection = connection
+        self.connection = None
+        self.callback_queue = None
 
-    async def connect(self) -> "Producer":
+    def is_ready(self) -> bool:
+        return self.connection is not None and self.connection.is_closed is False
+
+    async def connect(self, connection):
         """
         Setup the connection with RabbitMQ, and start consuming for a reply
         :return:
         """
+        self.connection = connection
         self.channel = await self.connection.channel()
         self.callback_queue = await self.channel.declare_queue(exclusive=True)
         await self.callback_queue.consume(self.on_response)
-        return self
 
     async def consume(self):
         await self.callback_queue.consume(self.on_response)
