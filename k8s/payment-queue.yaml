@@ -40,4 +40,16 @@ spec:
               value: "user-postgres-service-replica"
             - name: PROMETHEUS_MULTIPROC_DIR
               value: "/tmp/prometheus"
-
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: payment-queue-deployment
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: payment-queue-deployment
+  minReplicas: 1
+  maxReplicas: 3
+  targetCPUUtilizationPercentage: 70

@@ -62,12 +62,12 @@ spec:
 apiVersion: autoscaling/v1
 kind: HorizontalPodAutoscaler
 metadata:
-  name: payment-service
+  name: user-deployment
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: payment-service
+    name: user-deployment
   minReplicas: 1
   maxReplicas: 5
   targetCPUUtilizationPercentage: 50

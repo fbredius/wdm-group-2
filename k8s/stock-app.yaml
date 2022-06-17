@@ -64,12 +64,12 @@ spec:
 apiVersion: autoscaling/v1
 kind: HorizontalPodAutoscaler
 metadata:
-  name: stock-service
+  name: stock-deployment
 spec:
   scaleTargetRef:
     apiVersion: apps/v1
     kind: Deployment
-    name: stock-service
+    name: stock-deployment
   minReplicas: 1
   maxReplicas: 5
   targetCPUUtilizationPercentage: 50
