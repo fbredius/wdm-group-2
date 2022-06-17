@@ -9,22 +9,36 @@ from aio_pika.abc import (
 )
 
 
-class Producer:
+class Connection:
     connection: AbstractConnection
+
+    def __init__(self):
+        self.connection = None
+        self.loop = asyncio.get_running_loop()
+
+    async def get_connection(self):
+        if self.connection.is_closed or self.connection is None:
+            self.connection = await connect("amqp://guest:guest@rabbitmq/", loop=self.loop)
+        return self.connection
+
+
+class Producer:
+    # connection: AbstractConnection
     channel: AbstractChannel
     callback_queue: AbstractQueue
 
-    def __init__(self, queue) -> None:
+    def __init__(self, connection, queue) -> None:
         self.futures: MutableMapping[str, asyncio.Future] = {}
         self.loop = asyncio.get_running_loop()
         self.queue = queue
+        self.connection = connection
 
     async def connect(self) -> "Producer":
         """
         Setup the connection with RabbitMQ, and start consuming for a reply
         :return:
         """
-        self.connection = await connect("amqp://guest:guest@rabbitmq/", loop=self.loop)
+        # self.connection = await connect("amqp://guest:guest@rabbitmq/", loop=self.loop)
         self.channel = await self.connection.channel()
         self.callback_queue = await self.channel.declare_queue(exclusive=True)
         await self.callback_queue.consume(self.on_response)
