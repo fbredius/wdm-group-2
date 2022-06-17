@@ -53,6 +53,8 @@ registry = CollectorRegistry()
 multiprocess.MultiProcessCollector(registry)
 
 connection = Connection()
+stock_producer: Producer = None
+payment_producer: Producer = None
 
 
 class Order(db.Model):
@@ -232,7 +234,8 @@ async def checkout(order_id):
 
     # Send the payment and stock task to the respective queues simultaneously
 
-    conn = Connection.get_connection()
+    conn: Connection = await connection.get_connection()
+    logger.debug(f"Conn: {conn.__dict__}")
     stock_producer = await Producer(conn, "stock").connect()
     payment_producer = await Producer(conn, "payment").connect()
     payment_response, stock_response = await asyncio.gather(payment_producer.publish(payment_body, "pay", reply=True),

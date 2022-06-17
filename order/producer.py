@@ -17,7 +17,7 @@ class Connection:
         self.loop = asyncio.get_running_loop()
 
     async def get_connection(self):
-        if self.connection.is_closed or self.connection is None:
+        if self.connection is None or self.connection.is_closed:
             self.connection = await connect("amqp://guest:guest@rabbitmq/", loop=self.loop)
         return self.connection
 
@@ -38,7 +38,6 @@ class Producer:
         Setup the connection with RabbitMQ, and start consuming for a reply
         :return:
         """
-        # self.connection = await connect("amqp://guest:guest@rabbitmq/", loop=self.loop)
         self.channel = await self.connection.channel()
         self.callback_queue = await self.channel.declare_queue(exclusive=True)
         await self.callback_queue.consume(self.on_response)
