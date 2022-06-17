@@ -16,7 +16,7 @@ data:
     dt=$(date '+%d/%m/%Y %H:%M:%S');
     echo "$dt - Running init script the 1st time Primary PostgreSql container is created...";
 
-    customDatabaseName=$DB_NAME
+    customDatabaseName=$POSTGRES_DB_NAME
     customUserName="my_username"
 
     echo "$dt - Running: psql -v ON_ERROR_STOP=1 --username $POSTGRES_USER --dbname $POSTGRES_DB ...";

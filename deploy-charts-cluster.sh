@@ -8,6 +8,3 @@ helm repo update
 
 helm install promstack prometheus-community/kube-prometheus-stack
 helm install -f helm-config/nginx-helm-values.yaml nginx ingress-nginx/ingress-nginx
-kubectl apply -f https://raw.githubusercontent.com/reactive-tech/kubegres/v1.15/kubegres.yaml
-
-kubectl apply -f "https://github.com/rabbitmq/cluster-operator/releases/latest/download/cluster-operator.yml"

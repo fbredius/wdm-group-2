@@ -4,7 +4,6 @@ metadata:
   name: stock-service
   labels:
     app: stock-service
-    type: app-service
 spec:
   type: ClusterIP
   selector:
@@ -18,6 +17,8 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: stock-deployment
+  labels:
+    type: app-deployment
 spec:
   replicas: 1
   selector:

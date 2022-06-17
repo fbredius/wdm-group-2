@@ -54,24 +54,46 @@ Running this script (in git bash) works for me to deploy everything locally.
 
 > Installation
 1. Install the gcloud CLI from [here](https://cloud.google.com/sdk/docs/install).
+
 ___
+
 2. Open a terminal and run `gcloud init`.
+
 ___
+
 3. Authorize the console to your GCP`gcloud
-   - `gcloud auth login`
-   - opens window: login
+    - `gcloud auth login`
+    - opens window: login
+
 ___
-4. Run `gcloud config set project versatile-field-350813` in your terminal. This sets our WDM project on Google Cloud for your current configuration of the CLI.
+
+4. Run `gcloud config set project versatile-field-350813` in your terminal. This sets our WDM project on Google Cloud
+   for your current configuration of the CLI.
+
 ___
-5. Run `gcloud container clusters get-credentials web-scale-cluster --zone europe-west4-a --project versatile-field-350813` in your terminal.
-This updates **kubeconfig** to get **kubectl** to use a GKE cluster.
+
+5.
+
+Run `gcloud container clusters get-credentials web-scale-cluster --zone europe-west4-a --project versatile-field-350813`
+in your terminal.
+
+5.
+
+Run `gcloud container clusters get-credentials web-scale-cluster --zone europe-west4-a --project versatile-field-350813`
+in your terminal. This updates **kubeconfig** to get **kubectl** to use a GKE cluster.
 ___
+
 6. Navigate to the project root with cloud shell (`cd C:\User\.....\wdm-group-2`)
+
 ___
+
 7. `echo %USERNAME% && echo %USERDOMAIN%` (No idea what this does)
+
 ___
-8. The Docker security group is called docker-users. To add a user from the Administrator command prompt, run the following command:
-`net localgroup docker-users <DOMAIN>\<USERNAME> /add`.
+
+8. The Docker security group is called docker-users. To add a user from the Administrator command prompt, run the
+   following command:
+   `net localgroup docker-users <DOMAIN>\<USERNAME> /add`.
     - Where *DOMAIN* is your Windows domain.
     - *USERNAME* is your user name.
     - On Linux, run: `sudo usermod -a -G docker ${USER}`

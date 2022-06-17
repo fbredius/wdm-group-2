@@ -3,6 +3,9 @@ kind: Kubegres
 metadata:
   name: order-postgres-service
   namespace: default
+  labels:
+    app: order
+    kind: postgres
 
 spec:
   replicas: 3
