@@ -78,3 +78,16 @@ spec:
     - targetPort: 5000
       path: "/metrics"
       interval: 5s
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: order-service
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: order-service
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 50

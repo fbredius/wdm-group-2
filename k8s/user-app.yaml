@@ -3,7 +3,7 @@ kind: Service
 metadata:
   name: payment-service
   labels:
-    app: order-service
+    app: payment-service
     type: app-service
 spec:
   type: ClusterIP
@@ -58,3 +58,16 @@ spec:
               value: "user-postgres-service-replica"
             - name: PROMETHEUS_MULTIPROC_DIR
               value: "/tmp/prometheus"
+---
+apiVersion: autoscaling/v1
+kind: HorizontalPodAutoscaler
+metadata:
+  name: payment-service
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: payment-service
+  minReplicas: 1
+  maxReplicas: 5
+  targetCPUUtilizationPercentage: 50
