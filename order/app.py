@@ -6,7 +6,6 @@ import shutil
 import uuid
 from http import HTTPStatus
 
-import requests
 from flask_sqlalchemy import SQLAlchemy
 from prometheus_async.aio import time
 from prometheus_client import (
@@ -185,8 +184,10 @@ async def add_item(order_id, item_id):
     flag_modified(order, "items")
 
     # Increase total cost of order
-    item = requests.get(f"{stock_url}/find/{item_id}").json()
-    order.total_cost += item['price']
+    await check_producer()
+    body = json.dumps({"item_id": item_id})
+    response = await stock_producer.publish(body, "getPrice", reply=True)
+    order.total_cost += json.loads(response['message'])['price']
     flag_modified(order, "total_cost")
 
     logger.debug(f"Added item to {order_id = }, {item_id =}, {order.items = }")
@@ -215,8 +216,10 @@ async def remove_item(order_id, item_id):
     flag_modified(order, "items")
 
     # Decrease total cost of order
-    item = requests.get(f"{stock_url}/find/{item_id}").json()
-    order.total_cost -= item['price']
+    await check_producer()
+    body = json.dumps({"item_id": item_id})
+    response = await stock_producer.publish(body, "getPrice", reply=True)
+    order.total_cost -= json.loads(response['message'])['price']
     flag_modified(order, "total_cost")
 
     db.session.add(order)
@@ -266,10 +269,7 @@ async def checkout(order_id):
 
     # Send the payment and stock task to the respective queues simultaneously
 
-    if not stock_producer.is_ready() or not payment_producer.is_ready():
-        conn: OrderConnection = await connection.get_connection()
-        await stock_producer.connect(conn)
-        await payment_producer.connect(conn)
+    await check_producer()
 
     payment_response, stock_response = await asyncio.gather(payment_producer.publish(payment_body, "pay", reply=True),
                                                             stock_producer.publish(stock_body, "subtractItems",
@@ -280,10 +280,10 @@ async def checkout(order_id):
     logger.debug(f"order id: {order_id}, stock response: {stock_response}")
     if not status_code_is_success(int(payment_response["status"])) \
             or not status_code_is_success(int(stock_response["status"])):
-        return await handle_rollback(payment_producer, stock_producer, payment_body, stock_body,
+        return await handle_rollback(payment_body, stock_body,
                                      payment_response, stock_response)
 
-    logger.debug(f"order id: {order_id} Payment and stock succesfull")
+    logger.debug(f"order id: {order_id} Payment and stock successful")
     # If success set Order status to 'paid'
     await set_order_to_paid(order)
 
@@ -365,3 +365,12 @@ async def metrics():
     data = generate_latest(registry)
     logger.debug(f"Metrics, returning: {data}")
     return Response(data, mimetype=CONTENT_TYPE_LATEST)
+
+async def check_producer():
+    """
+    Check producer if ready, otherwise initialize.
+    """
+    if not stock_producer.is_ready() or not payment_producer.is_ready():
+        conn: OrderConnection = await connection.get_connection()
+        await stock_producer.connect(conn)
+        await payment_producer.connect(conn)

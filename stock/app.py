@@ -1,3 +1,4 @@
+import json
 import logging
 import os
 import shutil
@@ -145,6 +146,16 @@ async def find_item(item_id: str):
     item = Item.query.get_or_404(item_id).as_dict()
     logger.debug(f"Found: {item}")
     return item
+
+
+async def get_item_price(item_id: str):
+    """
+    Get price of a certain item.
+    :param item_id: ID of item
+    :return: price of item
+    """
+    item = Item.query.get_or_404(item_id).as_dict()
+    return await make_response(json.dumps({"price": item["price"]}), HTTPStatus.OK)
 
 
 @app.post('/add/<item_id>/<amount>')
