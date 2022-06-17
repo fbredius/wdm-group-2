@@ -63,7 +63,7 @@ Project implementation, deployment scripts and presentation for **Group 2** for 
   Folder containing the stock application logic, the message consumer and dockerfile.
 
 * `test`
-    Folder containing some basic correctness tests for the entire system. (Feel free to enhance them)
+    Folder containing some basic correctness tests for the entire system.
 
 ### How to run
 
