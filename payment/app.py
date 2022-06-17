@@ -40,23 +40,13 @@ registry = CollectorRegistry()
 multiprocess.MultiProcessCollector(registry)
 
 
-def recreate_tables():
-    """
-    Recreate all tables in the database.
-    """
-    logger.debug("DB drop all")
-    try:
-        db.session.close()
-        db.drop_all()
-    except ProgrammingError:
-        logger.warning("Not dropping table as it does not exist")
-    logger.debug("DB dropped all")
-    logger.debug("DB create all")
-    db.create_all()
-    logger.debug("DB created all")
-    logger.debug("DB commit")
-    db.session.commit()
-    logger.debug("DB commited")
+create_user_metric = Summary("create_user", "Summary of /create_user endpoint")
+find_user_metric = Summary("find_user", "Summary of /find_user/<user_id>")
+add_credit_metric = Summary("add_credit", "Summary of /add_funds/<user_id>/<amount>")
+pay_metric = Summary("pay", "Summary of /pay/<user_id>/<order_id>/<amount>")
+cancel_metric = Summary("cancel", "/cancel/<user_id>/<order_id>")
+payment_status_metric = Summary("payment_status", "/status/<user_id>/<order_id>")
+cancel_payment_metric = Summary("db_cancel_payment", "cancel payment")
 
 
 class User(db.Model):
@@ -121,19 +111,38 @@ class Payment(db.Model):
         return dct
 
 
+# Create all needed tables in database.
 db.create_all()
 db.session.commit()
 
-create_user_metric = Summary("create_user", "Summary of /create_user endpoint")
-find_user_metric = Summary("find_user", "Summary of /find_user/<user_id>")
-add_credit_metric = Summary("add_credit", "Summary of /add_funds/<user_id>/<amount>")
-pay_metric = Summary("pay", "Summary of /pay/<user_id>/<order_id>/<amount>")
-cancel_metric = Summary("cancel", "/cancel/<user_id>/<order_id>")
-payment_status_metric = Summary("payment_status", "/status/<user_id>/<order_id>")
-cancel_payment_metric = Summary("db_cancel_payment", "cancel payment")
+
+def recreate_tables():
+    """
+    Recreate all tables in the database.
+    """
+    logger.debug("DB drop all")
+    try:
+        db.session.close()
+        db.drop_all()
+    except ProgrammingError:
+        logger.warning("Not dropping table as it does not exist")
+    logger.debug("DB dropped all")
+    logger.debug("DB create all")
+    db.create_all()
+    logger.debug("DB created all")
+    logger.debug("DB commit")
+    db.session.commit()
+    logger.debug("DB commited")
 
 
 def construct_payment_id(user_id, order_id):
+    """
+    Create payment ID for a certain user & order ID.
+    This just concatenates both IDs by a slash.
+    :param user_id: ID of user of payment
+    :param order_id: ID of order of payment
+    :return: ID of payment
+    """
     return user_id + '/' + order_id
 
 
@@ -141,8 +150,8 @@ def construct_payment_id(user_id, order_id):
 @time(create_user_metric)
 async def create_user():
     """
-    Creates a user with 0 credit
-    :return: the user's id
+    Creates a user with 0 credit.
+    :return: ID of the created user
     """
     user_id = str(uuid.uuid4())
     user = User(user_id, 0)
@@ -158,9 +167,9 @@ async def create_user():
 @time(find_user_metric)
 async def find_user(user_id: str):
     """
-    Returns the user information
-    :param user_id: The user to get information from
-    :return: User { id, credit }
+    Returns the user information for a certain user ID.
+    :param user_id: ID of user to get information from
+    :return: user object as User { id, credit }
     """
     return User.query.get_or_404(user_id).as_dict()
 
@@ -169,10 +178,10 @@ async def find_user(user_id: str):
 @time(add_credit_metric)
 async def add_credit(user_id: str, amount: float):
     """
-    Adds funds (amount) to the user's account
-    :param user_id: The user to add funds to
-    :param amount: The amount of funds to be added
-    :return: true / false
+    Adds funds (amount) to the user's account.
+    :param user_id: ID of user to add funds to
+    :param amount: amount of funds to be added
+    :return: true / false indicating success of update
     """
     user = User.query.filter_by(id=user_id).first()
     done = False
@@ -191,17 +200,23 @@ async def add_credit(user_id: str, amount: float):
 @app.post('/pay/<user_id>/<order_id>/<amount>')
 @time(pay_metric)
 async def pay(user_id: str, order_id: str, amount: float):
+    """
+    Subtracts the amount of the order from the user's credit.
+    :param amount: amount to be subtracted
+    :param user_id: ID of user to subtract credit from
+    :param order_id: ID of order to which the amount corresponds
+    :return: failure if credit is not enough
+    """
     return await remove_credit(amount, order_id, user_id)
 
 
 async def remove_credit(amount, order_id, user_id):
     """
-    Subtracts the amount of the order from the user's credit
-    Returns failure if credit is not enough
-    :param amount: The amount to be subtracted
-    :param user_id: The user id to subtract credit from
-    :param order_id: The order id to which the amount corresponds
-    :return:
+    Subtracts the amount of the order from the user's credit.
+    :param amount: amount to be subtracted
+    :param user_id: ID of user to subtract credit from
+    :param order_id: ID of order to which the amount corresponds
+    :return: failure if credit is not enough
     """
     user = User.query.get_or_404(user_id)
     logger.debug(f"removing credit from user: {user.as_dict() =}")
@@ -230,16 +245,22 @@ async def remove_credit(amount, order_id, user_id):
 @app.post('/cancel/<user_id>/<order_id>')
 @time(cancel_metric)
 async def cancel(user_id: str, order_id: str):
+    """
+    Cancels the payment made by a specific user for a specific order.
+    :param user_id: ID of user to cancel the payment for
+    :param order_id: ID of order to cancel the payment for
+    :return: response indicating success of cancel payment
+    """
     return await cancel_payment(order_id, user_id)
 
 
 @time(cancel_payment_metric)
 async def cancel_payment(order_id, user_id):
     """
-    Cancels the payment made by a specific user for a specific order
-    :param user_id: The user id to cancel the payment for
-    :param order_id: The order id to cancel the payment for
-    :return:
+    Cancels the payment made by a specific user for a specific order.
+    :param user_id: ID of user to cancel the payment for
+    :param order_id: ID of order to cancel the payment for
+    :return: response indicating success of cancel payment
     """
     logger.debug(f"Cancelling payment for order: {order_id}")
     user = User.query.get_or_404(user_id)
@@ -265,10 +286,10 @@ async def cancel_payment(order_id, user_id):
 @time(payment_status_metric)
 async def payment_status(user_id: str, order_id: str):
     """
-    Returns the status of the payment
-    :param user_id: The user id to get the status for
-    :param order_id: The order id to get the status for
-    :return: true / false
+    Check status for a certain payment by user & order ID.
+    :param user_id: ID of user to get the status for
+    :param order_id: ID of order to get the status for
+    :return: true / false indicating payment status
     """
     paid = False
     payment_id = construct_payment_id(user_id, order_id)

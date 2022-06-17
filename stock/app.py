@@ -65,7 +65,7 @@ class Item(db.Model):
     def __init__(self, id, price, stock):
         """
         Item object containing all relevant fields.
-        :param id: ID of Item
+        :param id: ID of item
         :param price: Price of the item
         :param stock: Amount of stock left for the item
         """
@@ -90,6 +90,11 @@ class Item(db.Model):
         return dct
 
 
+# Create all needed tables in database.
+db.create_all()
+db.session.commit()
+
+
 def recreate_tables():
     """
     Recreate all tables in the database.
@@ -106,21 +111,16 @@ def recreate_tables():
     logger.debug("DB created all")
     logger.debug("DB commit")
     db.session.commit()
-    logger.debug("DB commited")
-
-
-# Create all needed tables in database.
-db.create_all()
-db.session.commit()
+    logger.debug("DB committed")
 
 
 @app.post('/item/create/<price>')
 @time(create_item_metric)
 async def create_item(price: float):
     """
-    Adds an item and its price
-    :param price: The price of the item
-    :return: the item's id
+    Create a new item with a certain price.
+    :param price: price of the item
+    :return: ID of the item
     """
     item_id = str(uuid.uuid4())
     item = Item(item_id, float(price), 0)
@@ -137,9 +137,9 @@ async def create_item(price: float):
 @time(find_item_metric)
 async def find_item(item_id: str):
     """
-    Return an item's availability and price
-    :param item_id: The item to get information from
-    :return: Item { id, stock, price }
+    Return an item's availability and price.
+    :param item_id: ID of item to get information from
+    :return: item object as Item { id, stock, price }
     """
     logger.debug(f"Finding: {item_id=}")
     item = Item.query.get_or_404(item_id).as_dict()
@@ -151,10 +151,10 @@ async def find_item(item_id: str):
 @time(add_stock_metric)
 async def add_stock(item_id: str, amount: int):
     """
-    Adds the given number of stock items to the item count in the stock
-    :param item_id: The item to be added
-    :param amount: The amount of items to be added
-    :return:
+    Adds the given number of stock items to the item count in the stock.
+    :param item_id: ID of the item to be added
+    :param amount: amount of items to be added
+    :return: response indicating success of update
     """
     item = Item.query.get_or_404(item_id)
     item.stock = item.stock + int(amount)
@@ -170,10 +170,10 @@ async def add_stock(item_id: str, amount: int):
 @time(remove_stock_metric)
 async def remove_stock(item_id: str, amount: int):
     """
-    Subtracts an item from stock by the amount specified
-    :param item_id: Item to be subtracted
-    :param amount: Amount of items to be subtracted
-    :return:
+    Subtracts an item from stock by the amount specified.
+    :param item_id: ID of item to be subtracted
+    :param amount: amount to be subtracted
+    :return: response indicating success of update
     """
     logger.debug(f"Attempting to take {amount} from stock of {item_id=}")
     return await update_stock({item_id: Item.stock - int(amount)})
@@ -184,8 +184,8 @@ async def update_stock(amounts: Dict[str, int]):
     """
     Update the stock in the database
     If the stock goes below zero, the db will throw an integrity error
-    :param amounts:
-    :return:
+    :param amounts: amount dictionary of items with corresponding amount to be updated
+    :return: response indicating success of update
     """
     if len(amounts) <= 0:
         logger.warning("Items subtract call with no items")
@@ -224,9 +224,9 @@ async def update_stock(amounts: Dict[str, int]):
 @time(subtract_items_metric)
 async def subtract_items():
     """
-    Substracts all items in the list from stock by the amount of 1
+    Subtracts all items in the list from stock by the amount of 1
     Pass in an 'items_ids" array as JSON in the POST request.
-    :return:
+    :return: response indicating success of update
     """
     logger.debug(f"Subtract the items for request: {request.json =}")
     return await update_stock({id_: Item.stock - 1 for id_ in request.json['item_ids']})
@@ -239,7 +239,7 @@ async def increase_items():
     This is a rollback function. Following the SAGA pattern.
     Increases all items in the list from stock by the amount of 1
     Pass in an 'items_ids" array as JSON in the POST request.
-    :return:
+    :return: response indicating success of update
     """
     logger.debug(f"Increase the items for request: {request.json =}")
     return await update_stock({id_: Item.stock + 1 for id_ in request.json['item_ids']})
