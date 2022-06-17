@@ -20,7 +20,7 @@ from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.types import String, Float, Boolean
 
-from producer import Producer
+from producer import Producer, Connection
 
 app_name = 'order-service'
 app = Quart(app_name)
@@ -51,6 +51,10 @@ os.makedirs(PROMETHEUS_MULTIPROC_DIR)
 
 registry = CollectorRegistry()
 multiprocess.MultiProcessCollector(registry)
+
+connection = Connection()
+stock_producer = Producer("stock")
+payment_producer = Producer("payment")
 
 
 class Order(db.Model):
@@ -230,8 +234,11 @@ async def checkout(order_id):
 
     # Send the payment and stock task to the respective queues simultaneously
 
-    stock_producer = await Producer("stock").connect()
-    payment_producer = await Producer("payment").connect()
+    if not stock_producer.is_ready() or not payment_producer.is_ready():
+        conn: Connection = await connection.get_connection()
+        await stock_producer.connect(conn)
+        await payment_producer.connect(conn)
+
     payment_response, stock_response = await asyncio.gather(payment_producer.publish(payment_body, "pay", reply=True),
                                                             stock_producer.publish(stock_body, "subtractItems",
                                                                                    reply=True))
