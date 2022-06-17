@@ -81,11 +81,12 @@ ___
 > Updating the existing cluster
 10. How to push a container to the registry:
 
-    1. Tag the container `ptemarvelde/wdm-2022:<image_name>:<some_optional_tag>`
+    1. docker login -u <uname> -p <key>
+    2. Tag the container `ptemarvelde/wdm-2022:<image_name>`
         - Example: `docker tag stock ptemarvelde/wdm-2022:stock`
-    2. Push the container `docker push ptemarvelde/wdm-2022:<image_name>:<some_optional_tag>`
+    3. Push the container `docker push ptemarvelde/wdm-2022:<image_name>`
         - Example: `docker push ptemarvelde/wdm-2022:stock`
-    3. Or by using `docker-compose`. This can be done by first building (appropriate tags should already be set in the
+    4. Or by using `docker-compose`. This can be done by first building (appropriate tags should already be set in the
        .yml) and then pushing
         - `docker-compose build`
         - `docker-compose push`
