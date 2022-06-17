@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: stock-queue
-          image: europe-west4-docker.pkg.dev/versatile-field-350813/web-scale-repository/stock-queue:latest
+          image: ptemarvelde/wdm-2022:stock-queue
           imagePullPolicy: Always
           resources:
             limits:

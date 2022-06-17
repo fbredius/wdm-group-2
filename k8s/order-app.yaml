@@ -30,7 +30,7 @@ spec:
     spec:
       containers:
         - name: order
-          image: europe-west4-docker.pkg.dev/versatile-field-350813/web-scale-repository/order:latest
+          image: ptemarvelde/wdm-2022:order
           imagePullPolicy: Always
           resources:
             limits:

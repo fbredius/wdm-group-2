@@ -30,7 +30,7 @@ spec:
     spec:
       containers:
         - name: stock
-          image: europe-west4-docker.pkg.dev/versatile-field-350813/web-scale-repository/stock:latest
+          image: ptemarvelde/wdm-2022:stock
           imagePullPolicy: Always
           resources:
             limits:

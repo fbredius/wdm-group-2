@@ -1,7 +1,7 @@
 services:
 
   gateway:
-    image: nginx:latest
+    image: nginx
     depends_on:
       - order-service
       - payment-service
@@ -13,7 +13,7 @@ services:
 
   order-service:
     build: ./order
-    image: europe-west4-docker.pkg.dev/versatile-field-350813/web-scale-repository/order:latest
+    image: ptemarvelde/wdm-2022:order
     environment:
       - GATEWAY_URL=http://gateway:80
       - LOG_LEVEL=DEBUG
@@ -39,7 +39,7 @@ services:
 
   stock-service:
     build: ./stock
-    image: europe-west4-docker.pkg.dev/versatile-field-350813/web-scale-repository/stock:latest
+    image: ptemarvelde/wdm-2022:stock
     environment:
       - GATEWAY_URL=http://gateway:80
       - LOG_LEVEL=DEBUG
@@ -65,7 +65,7 @@ services:
 
   stock-queue:
     build: ./stock
-    image: europe-west4-docker.pkg.dev/versatile-field-350813/web-scale-repository/stock-queue:latest
+    image: ptemarvelde/wdm-2022:stock-queue
     command: python consumer.py
     depends_on:
       stock-postgres-service:
@@ -79,8 +79,8 @@ services:
 
   payment-service:
     build: ./payment
-    image: europe-west4-docker.pkg.dev/versatile-field-350813/web-scale-repository/user:latest
-    #    command: gunicorn -b 0.0.0.0:5000 app:app --worker-class uvicorn.workers.UvicornWorker
+    image: ptemarvelde/wdm-2022:user
+    #    command: gunicorn -w 4 -b 0.0.0.0:5000 app:app --worker-class uvicorn.workers.UvicornWorker
     command: uvicorn app:app --host 0.0.0.0 --port 5000
     depends_on:
       payment-postgres-service:
@@ -104,7 +104,7 @@ services:
 
   payment-queue:
     build: ./payment
-    image: europe-west4-docker.pkg.dev/versatile-field-350813/web-scale-repository/payment-queue:latest
+    image: ptemarvelde/wdm-2022:payment-queue
     command: python consumer.py
     depends_on:
       stock-postgres-service:

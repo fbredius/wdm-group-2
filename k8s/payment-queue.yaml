@@ -14,7 +14,7 @@ spec:
     spec:
       containers:
         - name: payment-queue
-          image: europe-west4-docker.pkg.dev/versatile-field-350813/web-scale-repository/payment-queue:latest
+          image: ptemarvelde/wdm-2022:payment-queue
           imagePullPolicy: Always
           resources:
             limits:
