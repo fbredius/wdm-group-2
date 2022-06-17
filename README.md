@@ -108,19 +108,30 @@ ___
     - Where *DOMAIN* is your Windows domain.
     - *USERNAME* is your user name.
     - On Linux, run: `sudo usermod -a -G docker ${USER}`
+
 ___
-9. Run `gcloud auth configure-docker europe-west4-docker.pkg.dev`. This will register `gcloud` as the credential helper for all Google-supported Docker registries. See [here](https://cloud.google.com/sdk/gcloud/reference/auth/configure-docker) for more info.
+
+9. Run `gcloud auth configure-docker europe-west4-docker.pkg.dev`. This will register `gcloud` as the credential helper
+   for all Google-supported Docker registries.
+   See [here](https://cloud.google.com/sdk/gcloud/reference/auth/configure-docker) for more info.
+
 ___
 > Updating the existing cluster
+
 10. How to push a container to the registry:
 
 ### How to run
 
-To be added
+Make sure `kubectl` is pointing at a k8s endpiont.
+
+- Run `deploy-to-cluster.sh`
+- Verify everything is up by running `kubectl get pods`
 
 ### Architecture
 
-In this project we have created a microservice architecture using the SAGA Pattern, see images. This architecture consists of three different services: stock-, payment-, and order service. These services use PostgreSQL to store data and RabbitMQ to communicate with each other in an event-driven manner.
+In this project we have created a microservice architecture using the SAGA Pattern, see images. This architecture
+consists of three different services: stock-, payment-, and order service. These services use PostgreSQL to store data
+and RabbitMQ to communicate with each other in an event-driven manner.
 
 ![Architecture of Project with Technologies used](/assets/architecture.png)
 **Image 1** Project Architecture
