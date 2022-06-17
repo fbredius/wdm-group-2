@@ -30,7 +30,7 @@ spec:
     spec:
       containers:
         - name: order
-          image: europe-west4-docker.pkg.dev/versatile-field-350813/web-scale-repository/order:latest
+          image: ptemarvelde/wdm-2022:order
           imagePullPolicy: Always
           resources:
             limits:
@@ -39,8 +39,8 @@ spec:
             requests:
               memory: "1Gi"
               cpu: "1"
-          command: ["gunicorn"]
-          args: ["-b", "0.0.0.0:5000", "app:app"]
+          command: [ "uvicorn" ]
+          args: [ "app:app", "--host", "0.0.0.0", "--port", "5000" ]
           ports:
             - containerPort: 5000
           env:

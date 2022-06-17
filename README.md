@@ -81,13 +81,14 @@ ___
 > Updating the existing cluster
 10. How to push a container to the registry:
 
-    1. Tag the container `europe-west4-docker.pkg.dev/versatile-field-350813/web-scale-repository/<image_name>:<some_optional_tag>`
-       - Example: `docker tag stock:latest europe-west4-docker.pkg.dev/versatile-field-350813/web-scale-repository/stock:latest`
-    2. Push the container `docker push europe-west4-docker.pkg.dev/versatile-field-350813/web-scale-repository/<image_name>:<some_optional_tag>`
-       - Example: `docker push europe-west4-docker.pkg.dev/versatile-field-350813/web-scale-repository/stock:latest`
-    3. Or by using `docker-compose`. This can be done by first building (appropriate tags should already be set in the .yml) and then pushing
-       - `docker-compose build`
-       - `docker-compose push`
+    1. Tag the container `ptemarvelde/wdm-2022:<image_name>:<some_optional_tag>`
+        - Example: `docker tag stock ptemarvelde/wdm-2022:stock`
+    2. Push the container `docker push ptemarvelde/wdm-2022:<image_name>:<some_optional_tag>`
+        - Example: `docker push ptemarvelde/wdm-2022:stock`
+    3. Or by using `docker-compose`. This can be done by first building (appropriate tags should already be set in the
+       .yml) and then pushing
+        - `docker-compose build`
+        - `docker-compose push`
     
 NOT TESTED, but you should be able to init a cluster with some nodes to test deploying stuff with:
 
@@ -122,10 +123,15 @@ ingress to the cluster.
     - Delete everything that has to do with stock-postgres <br>
       `kubectl delete -f k8s/stock-postgres.yaml && kubectl delete pvc -l app=stock-postgres-service`
 
-- Accesing grafana:
-    - kubectl port-forward svc/promstack-grafana 3000:80
+- Accessing grafana:
+    - `kubectl port-forward svc/promstack-grafana 3000:80`
     - go to localhost:3000
     - login with uname: admin, password: prom-operator
+
+- Accessing Rabbitmq:
+    - `kubectl port-forward kubectl port-forward service/rabbitmqcluster 15672:15672`
+    - go to localhost:15672
+    - login with guest/guest
 
 ## Known issues
 

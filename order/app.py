@@ -1,29 +1,34 @@
-import atexit
+import asyncio
 import json
 import logging
 import os
 import shutil
 import uuid
 from http import HTTPStatus
-import pika
+
 import requests
-from flask import Flask, make_response, jsonify
-from flask import Response
 from flask_sqlalchemy import SQLAlchemy
+from prometheus_async.aio import time
 from prometheus_client import (
     CONTENT_TYPE_LATEST,
     Histogram,
     generate_latest, CollectorRegistry, multiprocess,
 )
+from quart import Quart, make_response, jsonify, Response
 from sqlalchemy.dialects.postgresql import ARRAY
+from sqlalchemy.exc import ProgrammingError
 from sqlalchemy.orm.attributes import flag_modified
 from sqlalchemy.types import String, Float, Boolean
+
 from producer import Producer
 
-
 app_name = 'order-service'
-app = Flask(app_name)
-logging.getLogger(app_name).setLevel(os.environ.get('LOGLEVEL', 'DEBUG'))
+app = Quart(app_name)
+
+logging.basicConfig()
+logging.getLogger('sqlalchemy.engine').setLevel(os.environ.get('DB_LOG_LEVEL', logging.WARNING))
+logging.getLogger(app_name).setLevel(os.environ.get('LOG_LEVEL', 'DEBUG'))
+logger = logging.getLogger(app_name)
 
 stock_url = f'http://{os.environ["STOCK_SERVICE_URL"]}'
 payment_url = f'http://{os.environ["PAYMENT_SERVICE_URL"]}'
@@ -38,10 +43,6 @@ app.config['SQLALCHEMY_DATABASE_URI'] = DB_URL
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False  # silence the deprecation warning
 
 db = SQLAlchemy(app)
-
-# Setup an AMQP connection for this service
-connection = pika.BlockingConnection(pika.ConnectionParameters(host='rabbitmq', heartbeat=None))  # Change to environment variable
-atexit.register(connection.close)
 
 PROMETHEUS_MULTIPROC_DIR = os.environ["PROMETHEUS_MULTIPROC_DIR"]
 # make sure the dir is clean
@@ -77,48 +78,54 @@ class Order(db.Model):
         return dct
 
 
-if os.environ.get('DOCKER_COMPOSE_RUN') == "True":
-    app.logger.info("Clearing all tables as we're running in DOCKER COMPOSE")
-    db.drop_all()
-
 db.create_all()
 db.session.commit()
 
 
 def recreate_tables():
-    db.drop_all()
+    logger.debug("DB drop all")
+    try:
+        db.session.close()
+        db.drop_all()
+    except ProgrammingError:
+        logger.warning("Not dropping table as it does not exist")
+    logger.debug("DB dropped all")
+    logger.debug("DB create all")
     db.create_all()
+    logger.debug("DB created all")
+    logger.debug("DB commit")
     db.session.commit()
+    logger.debug("DB commited")
+    db.session.close()
 
 
-total_time_metric = Histogram("order_time", "Time of all requests in order app")
 create_order_metric = Histogram("create_order", "Histogram of /create/<user_id> endpoint")
 remove_order_metric = Histogram("remove_order", "Histogram of /remove<order_id>")
 add_item_metric = Histogram("add_item", "Histogram of /removeItem/<order_id>/<item_id>")
 find_order_metric = Histogram("find_order", "Histogram of /find/<order_id>")
 checkout_metric = Histogram("checkout", "Histogram of /checkout/<order_id>")
+handle_rollback_metric = Histogram("handle_rollback", "Histogram of handle rollback")
 
 
 @app.post('/create/<user_id>')
-@create_order_metric.time()
-@total_time_metric.time()
-def create_order(user_id):
+@time(create_order_metric)
+async def create_order(user_id):
     """
     Creates an order for the given user, and returns an order_id
     :param user_id:
     :return: the order's id
     """
     idx = str(uuid.uuid4())
+    logger.debug(f"ID IS:          {idx}")
     order = Order(idx, False, [], user_id, 0)
     db.session.add(order)
     db.session.commit()
-    return make_response(jsonify({"order_id": idx}), HTTPStatus.OK)
+    return await make_response(jsonify({"order_id": idx}), HTTPStatus.OK)
 
 
 @app.delete('/remove/<order_id>')
-@remove_order_metric.time()
-@total_time_metric.time()
-def remove_order(order_id):
+@time(remove_order_metric)
+async def remove_order(order_id):
     """
     Deletes an order by ID
     :param order_id:
@@ -126,22 +133,21 @@ def remove_order(order_id):
     """
     Order.query.filter_by(id=order_id).delete()
     db.session.commit()
-    return make_response('success', HTTPStatus.OK)
+    return await make_response('success', HTTPStatus.OK)
 
 
 @app.post('/addItem/<order_id>/<item_id>')
-@add_item_metric.time()
-@total_time_metric.time()
-def add_item(order_id, item_id):
+@time(add_item_metric)
+async def add_item(order_id, item_id):
     """
     Adds a given item in the order given
     :param order_id:
     :param item_id:
     :return:
     """
-    app.logger.debug(f"Adding item to {order_id = }, {item_id =}")
+    logger.debug(f"Adding item to {order_id = }, {item_id =}")
     order = Order.query.get_or_404(order_id)
-    app.logger.debug(f"before {order.items = }")
+    logger.debug(f"before {order.items = }")
 
     # Add item to order.items list
     order.items.append(item_id)
@@ -152,17 +158,16 @@ def add_item(order_id, item_id):
     order.total_cost += item['price']
     flag_modified(order, "total_cost")
 
+    logger.debug(f"Added item to {order_id = }, {item_id =}, {order.items = }")
     db.session.merge(order)
     db.session.flush()
     db.session.commit()
-    app.logger.debug(f"Added item to {order_id = }, {item_id =}, {order.items = }")
-    return make_response("Item added to order", HTTPStatus.OK)
+    return await make_response("Item added to order", HTTPStatus.OK)
 
 
 @app.delete('/removeItem/<order_id>/<item_id>')
-@remove_order_metric.time()
-@total_time_metric.time()
-def remove_item(order_id, item_id):
+@time(remove_order_metric)
+async def remove_item(order_id, item_id):
     """
     Removes the given item from the given order
     :param order_id:
@@ -182,13 +187,12 @@ def remove_item(order_id, item_id):
 
     db.session.add(order)
     db.session.commit()
-    return make_response("Item removed from order", HTTPStatus.OK)
+    return await make_response("Item removed from order", HTTPStatus.OK)
 
 
 @app.get('/find/<order_id>')
-@find_order_metric.time()
-@total_time_metric.time()
-def find_order(order_id):
+@time(find_order_metric)
+async def find_order(order_id):
     """
     Retrieves the information of an order
     :param order_id:
@@ -198,9 +202,8 @@ def find_order(order_id):
 
 
 @app.post('/checkout/<order_id>')
-@checkout_metric.time()
-@total_time_metric.time()
-def checkout(order_id):
+@time(checkout_metric)
+async def checkout(order_id):
     """
     Handle the checkout.
     First we talk to the stock service to subtract the items.
@@ -210,113 +213,88 @@ def checkout(order_id):
     :param order_id:
     :return:
     """
-    app.logger.debug(f"Checking out order {order_id}")
+    logger.debug(f"Checking out order {order_id}")
     order: Order = Order.query.get_or_404(order_id)
-    app.logger.debug(f"Found order in checkout: {order.as_dict()}")
+    logger.debug(f"Found order in checkout: {order.as_dict()}")
 
     if order.paid:
-        app.logger.debug(f"Order already paid")
+        logger.debug(f"Order already paid")
         return make_response("Order already paid", HTTPStatus.BAD_REQUEST)
 
     # Setup RabbitMQ producers for the stock and payment requests
-    stock_producer = Producer(connection, "stock")
-    payment_producer = Producer(connection, "payment")
 
-    # Subtract Stock
-    stock_body = subtract_stock(order, stock_producer)
+    # Creating the body for the messages
+    logger.info(f"order: {order.as_dict()}")
+    stock_body = json.dumps({"item_ids": order.items})
+    payment_body = json.dumps({"user_id": order.user_id, "order_id": order.id, "total_cost": order.total_cost})
 
-    # Handle Payment
-    payment_body = handle_payment(order, payment_producer)
+    # Send the payment and stock task to the respective queues simultaneously
 
-    # Handle Transaction
-    stock_producer.consume()
-    payment_producer.consume()
+    stock_producer = await Producer("stock").connect()
+    payment_producer = await Producer("payment").connect()
+    payment_response, stock_response = await asyncio.gather(payment_producer.publish(payment_body, "pay", reply=True),
+                                                            stock_producer.publish(stock_body, "subtractItems",
+                                                                                   reply=True))
 
-    # TODO Add time-out
-    listen_for_events(payment_producer, stock_producer)
+    # If one of the tasks fails, start a rollback
+    logger.debug(f"order id: {order_id}, payment response: {payment_response}")
+    logger.debug(f"order id: {order_id}, stock response: {stock_response}")
+    if not status_code_is_success(int(payment_response["status"])) \
+            or not status_code_is_success(int(stock_response["status"])):
+        return await handle_rollback(payment_producer, stock_producer, payment_body, stock_body,
+                                     payment_response, stock_response)
 
-    # Handle Rollback according to SAGA Pattern
-    if not status_code_is_success(int(payment_producer.status)) \
-            or not status_code_is_success(int(stock_producer.status)):
-        return handle_rollback(payment_producer, stock_producer, payment_body, stock_body)
-
+    logger.debug(f"order id: {order_id} Payment and stock succesfull")
     # If success set Order status to 'paid'
-    set_order_to_paid(order)
+    await set_order_to_paid(order)
 
-    # Close RabbitMQ connection
-    stock_producer.close()
-    payment_producer.close()
-
-    return make_response("Order successful", HTTPStatus.OK)
+    return await make_response("Order successful", HTTPStatus.OK)
 
 
 def status_code_is_success(status_code):
     return HTTPStatus.OK <= status_code < HTTPStatus.MULTIPLE_CHOICES
 
 
-def handle_rollback(payment_producer, stock_producer, payment_body, stock_body):
-    if not status_code_is_success(int(payment_producer.status)):
+@time(handle_rollback_metric)
+async def handle_rollback(payment_producer, stock_producer, payment_body, stock_body, payment_response, stock_response):
+    message = ""
+    if not status_code_is_success(int(payment_response["status"])):
+        logger.debug(f"Payment response code not success, {message}. payment body {payment_body}")
         # Rollback Stock subtraction if Payment fails and Stock subtraction was success
-        if status_code_is_success(int(stock_producer.status)):
-            stock_producer.publish(stock_body, "increaseItems", reply=False)
+        if status_code_is_success(int(stock_response["status"])):
+            logger.debug(
+                f"stock_response response code success, {message}, rolling back stock. payment_body:{payment_body}")
+            await stock_producer.publish(stock_body, "increaseItems", reply=False)
 
-        # Close RabbitMQ connection
-        stock_producer.close()
-        payment_producer.close()
+        message += payment_response["message"] + "\t\t"
 
-        app.logger.debug(f"Payment response code not success, {payment_producer.response.decode()}")
-        return make_response(payment_producer.response.decode(), HTTPStatus.BAD_REQUEST)
-
-    if not status_code_is_success(int(stock_producer.status)):
+    if not status_code_is_success(int(stock_response["status"])):
+        logger.debug(f"Stock response code not success, {message}. payment body {payment_body}")
         # Rollback Payment if Stock subtraction fails and Payment was success
-        if status_code_is_success(int(payment_producer.status)):
-            payment_producer.publish(payment_body, "cancel", reply=False)
+        if status_code_is_success(int(payment_response["status"])):
+            logger.debug(
+                f"Payment response code not success, {message}, rolling back payment. payment_body: {payment_body}")
+            await payment_producer.publish(payment_body, "cancel", reply=False)
 
-        # Close RabbitMQ connection
-        stock_producer.close()
-        payment_producer.close()
-
-        app.logger.debug(f"Stock response code not success, {stock_producer.response.decode()}")
-        return make_response(stock_producer.response.decode(), HTTPStatus.BAD_REQUEST)
+        message += stock_response["message"]
+    return await make_response(message, HTTPStatus.BAD_REQUEST)
 
 
-def set_order_to_paid(order):
+async def set_order_to_paid(order):
     order.paid = True
     db.session.add(order)
     db.session.commit()
-    db.session.close()
-    app.logger.debug(f"order successful")
-
-
-def listen_for_events(payment_producer, stock_producer):
-    while (stock_producer.status is None) or (payment_producer.status is None):
-        stock_producer.connection.process_data_events()
-        payment_producer.connection.process_data_events()
-
-
-def handle_payment(order, payment_producer):
-    payment_request_url = f"{payment_url}/pay/{order.user_id}/{order.id}/{order.total_cost}"
-    app.logger.debug(f"requesting payment for {order.total_cost} to {payment_request_url}")
-    payment_body = json.dumps({"user_id": order.user_id, "order_id": order.id, "total_cost": order.total_cost})
-    payment_producer.publish(payment_body, "pay", reply=True)
-    return payment_body
-
-
-def subtract_stock(order, stock_producer):
-    app.logger.debug(f"sending request to stock-service at {stock_url} with order: {order.as_dict()}")
-    stock_body = json.dumps({"item_ids": order.items})
-    stock_producer.publish(stock_body, "subtractItems", reply=True)
-    return stock_body
+    logger.debug(f"order successful")
 
 
 @app.delete('/clear_tables')
-def clear_tables():
+async def clear_tables():
     recreate_tables()
-    return make_response("tables cleared", HTTPStatus.OK)
+    return await make_response("tables cleared", HTTPStatus.OK)
 
 
 @app.route("/metrics")
-def metrics():
+async def metrics():
     data = generate_latest(registry)
-    app.logger.debug(f"Metrics, returning: {data}")
+    logger.debug(f"Metrics, returning: {data}")
     return Response(data, mimetype=CONTENT_TYPE_LATEST)
