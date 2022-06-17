@@ -14,16 +14,30 @@ logging.getLogger().setLevel(os.environ.get('LOG_LEVEL', logging.INFO))
 
 
 async def pay(user_id: str, order_id: str, amount: float):
+    """
+    Pay for a certain order, for a user.
+    :param user_id: ID of user to remove credit for
+    :param order_id: ID of order to pay for
+    :param amount: amount of credit that needs to be paid
+    """
     async with app.app_context():
         return await remove_credit(amount, order_id, user_id)
 
 
-async def refund(user_id: str, order_id: str):
+async def cancel(user_id: str, order_id: str):
+    """
+    Cancel order for a certain user.
+    :param user_id: ID of user to refund order for
+    :param order_id: ID of order to refund
+    """
     async with app.app_context():
         return await cancel_payment(order_id, user_id)
 
 
 async def main():
+    """
+    Main consumer function that consumes messages and redirects to correct function.
+    """
     connection = await connect("amqp://guest:guest@rabbitmq/")
 
     channel = await connection.channel()
@@ -49,7 +63,7 @@ async def main():
                         amount = request_body["total_cost"]
                         response = await pay(user_id, order_id, amount)
                     elif task == "cancel":
-                        response = await refund(user_id, order_id)
+                        response = await cancel(user_id, order_id)
                     else:
                         return
 
@@ -71,5 +85,4 @@ async def main():
 
 
 if __name__ == "__main__":
-    # asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     asyncio.run(main())

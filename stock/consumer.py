@@ -17,7 +17,7 @@ async def subtract_items(request_body):
     """
     Subtracts all items in the list from stock by the amount of 1
     Pass in an 'request_body' containing an 'item_ids' array
-    :return:
+    :param request_body: body of request received
     """
     logging.debug(f"Subtract the items: {request_body['item_ids']}")
 
@@ -30,7 +30,7 @@ async def increase_items(request_body):
     This is a rollback function. Following the SAGA pattern.
     Increases all items in the list from stock by the amount of 1
     Pass in an 'request_body' containing an 'item_ids' array
-    :return:
+    :param request_body: body of request received
     """
     logging.debug(f"Increase the items for request: {request_body['item_ids']}")
 
@@ -39,6 +39,9 @@ async def increase_items(request_body):
 
 
 async def main():
+    """
+    Main consumer function that consumes messages and redirects to correct function.
+    """
     connection = await connect("amqp://guest:guest@rabbitmq/")
 
     channel = await connection.channel()
@@ -81,5 +84,4 @@ async def main():
                 logging.exception(f"Processing error for message {message}")
 
 if __name__ == "__main__":
-    # asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
     asyncio.run(main())
