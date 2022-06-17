@@ -1,27 +1,60 @@
 # Web-scale Data Management Project Template
 
-Basic project structure with Python's Flask and Redis. 
-**You are free to use any web framework in any language and any database you like for this project.**
+Project implementation, deployment scripts and presentation for **Group 2** for the IN4331 Web-Scale Data Management course.
 
-### Project structure
+## Team
+
+| Student Name        | Student Number |
+|---------------------|----------------|
+| Bailey Tjiong       | 4474686        |
+| Frank Bredius       | 4575377        |
+| Jan-Mark Dannenberg | 4889576        |
+| Pepijn te Marvelde  | 4886496        |
+
+## Project
+
+### Technologies
+* [Aio-Pika](https://aio-pika.readthedocs.io/en/latest/)
+* [Docker](https://www.docker.com/)
+* [Flask-SQLAlchemy](https://flask-sqlalchemy.palletsprojects.com/en/2.x/)
+* [Grafana](https://grafana.com/)
+* [Helm](https://helm.sh/)
+* [Kubernetes](https://kubernetes.io/)
+* [NGINX](https://www.nginx.com/)
+* [PostgreSQL](https://www.postgresql.org/)
+* [Prometheus](https://prometheus.io/)
+* [QUnicorn](https://gunicorn.org/)
+* [Quart](https://pgjones.gitlab.io/quart/)
+* [RabbitMQ](https://www.rabbitmq.com/)
+* [Uvicorn](https://www.uvicorn.org/)
+
+### Structure
 
 * `env`
-    Folder containing the Redis env variables for the docker-compose deployment
+    Folder containing the PostgreSQL env variables for the docker-compose deployment
     
 * `helm-config` 
-   Helm chart values for Redis and ingress-nginx
+   Helm chart values for Prometheus and ingress-nginx
         
 * `k8s`
-    Folder containing the kubernetes deployments, apps and services for the ingress, order, payment and stock services.
+    Folder containing the kubernetes deployments, apps and services for the following services:
+  * RabbitMQ Queues
+  * RabbitMQ Orchestrator
+  * Order Service
+  * Payment Service
+  * Stock Service
+  * Order Postgres
+  * Payment Postgres
+  * Stock Postgres
     
 * `order`
-    Folder containing the order application logic and dockerfile. 
+    Folder containing the order application logic, the message producer and dockerfile. 
     
 * `payment`
-    Folder containing the payment application logic and dockerfile. 
+    Folder containing the payment application logic, the message consumer and dockerfile. 
 
 * `stock`
-    Folder containing the stock application logic and dockerfile. 
+    Folder containing the stock application logic, the message consumer and dockerfile. 
 
 * `test`
     Folder containing some basic correctness tests for the entire system. (Feel free to enhance them)
@@ -54,46 +87,24 @@ Running this script (in git bash) works for me to deploy everything locally.
 
 > Installation
 1. Install the gcloud CLI from [here](https://cloud.google.com/sdk/docs/install).
-
 ___
-
 2. Open a terminal and run `gcloud init`.
-
 ___
-
 3. Authorize the console to your GCP`gcloud
-    - `gcloud auth login`
-    - opens window: login
-
+   - `gcloud auth login`
+   - opens window: login
 ___
-
-4. Run `gcloud config set project versatile-field-350813` in your terminal. This sets our WDM project on Google Cloud
-   for your current configuration of the CLI.
-
+4. Run `gcloud config set project versatile-field-350813` in your terminal. This sets our WDM project on Google Cloud for your current configuration of the CLI.
 ___
-
-5.
-
-Run `gcloud container clusters get-credentials web-scale-cluster --zone europe-west4-a --project versatile-field-350813`
-in your terminal.
-
-5.
-
-Run `gcloud container clusters get-credentials web-scale-cluster --zone europe-west4-a --project versatile-field-350813`
-in your terminal. This updates **kubeconfig** to get **kubectl** to use a GKE cluster.
+5. Run `gcloud container clusters get-credentials web-scale-cluster --zone europe-west4-a --project versatile-field-350813` in your terminal.
+This updates **kubeconfig** to get **kubectl** to use a GKE cluster.
 ___
-
 6. Navigate to the project root with cloud shell (`cd C:\User\.....\wdm-group-2`)
-
 ___
-
 7. `echo %USERNAME% && echo %USERDOMAIN%` (No idea what this does)
-
 ___
-
-8. The Docker security group is called docker-users. To add a user from the Administrator command prompt, run the
-   following command:
-   `net localgroup docker-users <DOMAIN>\<USERNAME> /add`.
+8. The Docker security group is called docker-users. To add a user from the Administrator command prompt, run the following command:
+`net localgroup docker-users <DOMAIN>\<USERNAME> /add`.
     - Where *DOMAIN* is your Windows domain.
     - *USERNAME* is your user name.
     - On Linux, run: `sudo usermod -a -G docker ${USER}`
@@ -103,67 +114,20 @@ ___
 > Updating the existing cluster
 10. How to push a container to the registry:
 
-    1. docker login -u <uname> -p <key>
-    2. Tag the container `ptemarvelde/wdm-2022:<image_name>`
-        - Example: `docker tag stock ptemarvelde/wdm-2022:stock`
-    3. Push the container `docker push ptemarvelde/wdm-2022:<image_name>`
-        - Example: `docker push ptemarvelde/wdm-2022:stock`
-    4. Or by using `docker-compose`. This can be done by first building (appropriate tags should already be set in the
-       .yml) and then pushing
-        - `docker-compose build`
-        - `docker-compose push`
-    
-NOT TESTED, but you should be able to init a cluster with some nodes to test deploying stuff with:
+### How to run
 
-```
-gcloud beta container --project "versatile-field-350813" node-pools create "pool-1" --cluster "web-scale-cluster" --zone "europe-west4-a" --node-version "1.21.11-gke.900" --machine-type "e2-standard-4" --image-type "COS_CONTAINERD" --disk-type "pd-standard" --disk-size "100" --metadata disable-legacy-endpoints=true --scopes "https://www.googleapis.com/auth/devstorage.read_only","https://www.googleapis.com/auth/logging.write","https://www.googleapis.com/auth/monitoring","https://www.googleapis.com/auth/servicecontrol","https://www.googleapis.com/auth/service.management.readonly","https://www.googleapis.com/auth/trace.append" --num-nodes "1" --enable-autoupgrade --enable-autorepair --max-surge-upgrade 0 --max-unavailable-upgrade 2 --max-pods-per-node "110"
-```
+To be added
 
-(run in console), DONT FORGET TO DELETE THE NODE POOL AFTER to prevent cost
+### Architecture
 
-Similarly to the `minikube` deployment but run the `deploy-charts-cluster.sh` in the helm step to also install an
-ingress to the cluster.
+In this project we have created a microservice architecture using the SAGA Pattern, see images. This architecture consists of three different services: stock-, payment-, and order service. These services use PostgreSQL to store data and RabbitMQ to communicate with each other in an event-driven manner.
 
-***Requirements:*** You need to have access to kubectl of a k8s cluster.
+![Architecture of Project with Technologies used](/assets/architecture.png)
+**Image 1** Project Architecture
 
-## Kubernetes useful commands:
+![SAGA Pattern](/assets/saga.png)
+**Image 2**  SAGA Pattern
 
-- Deploy changes made to code: <br>
-  `docker-compose build && docker-compose push && kubectl replace --force -f ./k8s/`
-- Resizing cluster (can take a while) <br>
-  `gcloud container clusters resize web-scale-cluster --region europe-west4-a --num-nodes <num_nodes> `
-- Listing pods or Persistent Volume Claims<br>
-  `kubectl get pods`<br>
-  `kubectl get pvc`
-    - Flags:
-        - `-o wide` more verbose output
-        - `-w` watch output (keep updating)
-- Deleting resources<br>
-  `kubectl delete (--force-true) <resource type (pod|pvc|...)> <full resource (pod/pvc) name>`
-    - Or, to delete all resources defined in a yaml file: <br>
-      `kubectl delete -f k8s/<filename>`
-    - Or, just use the Cloud console UI
-    - Delete everything that has to do with stock-postgres <br>
-      `kubectl delete -f k8s/stock-postgres.yaml && kubectl delete pvc -l app=stock-postgres-service`
+### Presentation
 
-- Accessing grafana:
-    - `kubectl port-forward svc/promstack-grafana 3000:80`
-    - go to localhost:3000
-    - login with uname: admin, password: prom-operator
-
-- Accessing Rabbitmq:
-    - `kubectl port-forward kubectl port-forward service/rabbitmqcluster 15672:15672`
-    - go to localhost:15672
-    - login with guest/guest
-
-## Known issues
-
-1. Postgres replicas fail to start and ask for passwords in the logs. (logs fully filled with 'password:')
-   <br>Solution:
-    1. Go to https://console.cloud.google.com/kubernetes/config?project=versatile-field-350813
-    2. Click on 'base-kubegres-config'
-    3. Click on 'Edit'
-    4. add a line `PGPASSWORD=postgres` to the `copy_primary_data_to_replica.sh` script (starts at line 24) after the
-       first `echo` line
-    5. Save
-    6. replace the instances
+For more information regarding the project, see the presentation document in the `assets` folder.
