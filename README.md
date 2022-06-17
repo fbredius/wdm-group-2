@@ -33,39 +33,50 @@ Project implementation, deployment scripts and presentation for **Group 2** for 
 * `env`
     Folder containing the PostgreSQL env variables for the docker-compose deployment
     
-* `helm-config` 
-   Helm chart values for Prometheus and ingress-nginx
-        
+* `helm-config`
+  Helm chart values for Prometheus and ingress-nginx
+
 * `k8s`
-    Folder containing the kubernetes deployments, apps and services for the following services:
-  * RabbitMQ Queues
-  * RabbitMQ Orchestrator
-  * Order Service
-  * Payment Service
-  * Stock Service
-  * Order Postgres
-  * Payment Postgres
-  * Stock Postgres
-    
+  Folder containing the kubernetes deployments, apps and services for the following services:
+    * rabbitmq
+        * RabbitMQ Orchestrator
+    * database-deployments/
+        * Order Postgres
+        * Payment Postgres
+        * Stock Postgres
+    * kubegres
+        * postgres cluster
+    * Order Service
+    * Payment Service
+    * Stock Service
+    * Payment Queue
+    * Stock Queue
+
+
 * `order`
-    Folder containing the order application logic, the message producer and dockerfile. 
-    
+  Folder containing the order application logic, the message producer and dockerfile.
+
 * `payment`
-    Folder containing the payment application logic, the message consumer and dockerfile. 
+  Folder containing the payment application logic, the message consumer and dockerfile.
 
 * `stock`
-    Folder containing the stock application logic, the message consumer and dockerfile. 
+  Folder containing the stock application logic, the message consumer and dockerfile.
 
 * `test`
     Folder containing some basic correctness tests for the entire system.
 
 ### How to run
 
-To be added
+Make sure `kubectl` is pointing at a k8s endpiont.
+
+- Run `deploy-to-cluster.sh`
+- Verify everything is up by running `kubectl get pods`
 
 ### Architecture
 
-In this project we have created a microservice architecture using the SAGA Pattern, see images. This architecture consists of three different services: stock-, payment-, and order service. These services use PostgreSQL to store data and RabbitMQ to communicate with each other in an event-driven manner.
+In this project we have created a microservice architecture using the SAGA Pattern, see images. This architecture
+consists of three different services: stock-, payment-, and order service. These services use PostgreSQL to store data
+and RabbitMQ to communicate with each other in an event-driven manner.
 
 ![Architecture of Project with Technologies used](/assets/architecture.png)
 **Image 1** Project Architecture

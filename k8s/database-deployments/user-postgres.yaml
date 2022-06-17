@@ -1,8 +1,11 @@
 apiVersion: kubegres.reactive-tech.io/v1
 kind: Kubegres
 metadata:
-  name: stock-postgres-service
+  name: user-postgres-service
   namespace: default
+  labels:
+    app: payment
+    kind: postgres
 
 spec:
   replicas: 3
@@ -21,4 +24,4 @@ spec:
     - name: POSTGRES_REPLICATION_PASSWORD
       value: "postgres"
     - name: POSTGRES_DB_NAME
-      value: "stock_db"
+      value: "user_db"
