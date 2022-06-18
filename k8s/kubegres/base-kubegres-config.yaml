@@ -1,0 +1,136 @@
+apiVersion: v1
+data:
+  backup_database.sh: |
+    #!/bin/bash
+    set -e
+
+    dt=$(date '+%d/%m/%Y %H:%M:%S');
+    fileDt=$(date '+%d_%m_%Y_%H_%M_%S');
+    backUpFileName="$KUBEGRES_RESOURCE_NAME-backup-$fileDt.gz"
+    backUpFilePath="$BACKUP_DESTINATION_FOLDER/$backUpFileName"
+
+    echo "$dt - Starting DB backup of Kubegres resource $KUBEGRES_RESOURCE_NAME into file: $backUpFilePath";
+    echo "$dt - Running: pg_dumpall -h $BACKUP_SOURCE_DB_HOST_NAME -U postgres -c | gzip > $backUpFilePath"
+
+    pg_dumpall -h $BACKUP_SOURCE_DB_HOST_NAME -U postgres -c | gzip > $backUpFilePath
+
+    if [ $? -ne 0 ]; then
+      rm $backUpFilePath
+      echo "Unable to execute a BackUp. Please check DB connection settings"
+      exit 1
+    fi
+
+    echo "$dt - DB backup completed for Kubegres resource $KUBEGRES_RESOURCE_NAME into file: $backUpFilePath";
+  copy_primary_data_to_replica.sh: |
+    #!/bin/bash
+    set -e
+
+    dt=$(date '+%d/%m/%Y %H:%M:%S');
+    echo "$dt - Attempting to copy Primary DB to Replica DB...";
+    PGPASSWORD=postgres
+    if [ -z "$(ls -A $PGDATA)" ]; then
+
+        echo "$dt - Copying Primary DB to Replica DB folder: $PGDATA";
+        echo "$dt - Running: pg_basebackup -R -h $PRIMARY_HOST_NAME -D $PGDATA -P -U replication;";
+        pg_basebackup -R -h $PRIMARY_HOST_NAME -D $PGDATA -P -U replication;
+
+        if [ $UID == 0 ]
+        then
+        chown -R postgres:postgres $PGDATA;
+        fi
+
+        echo "$dt - Copy completed";
+
+    else
+        echo "$dt - Skipping copy from Primary DB because Replica DB already exists";
+    fi
+  pg_hba.conf: |
+    # TYPE  DATABASE        USER            ADDRESS                 METHOD
+    # Replication connections by a user with the replication privilege
+    host    replication     replication     all                     md5
+    # As long as it is authenticated, all connections allowed except from "0.0.0.0/0"
+    local   all             all                                     md5
+    host    all             all             all                     md5
+    host    all             all             0.0.0.0/0               reject
+  postgres.conf: |2
+
+    # Replication configs
+    listen_addresses = '*'
+    max_wal_senders = 10
+    max_connections = 100
+    shared_buffers = 128MB
+
+    # Logging
+    #log_destination = 'stderr,csvlog'
+    #logging_collector = on
+    #log_directory = 'pg_log'
+    #log_filename= 'postgresql-%Y-%m-%d_%H%M%S.log'
+  primary_create_replication_role.sh: |
+    #!/bin/bash
+    set -e
+
+    dt=$(date '+%d/%m/%Y %H:%M:%S');
+    echo "$dt - Creating replication role...";
+    echo "$dt - Running: psql -v ON_ERROR_STOP=1 --username $POSTGRES_USER --dbname $POSTGRES_DB ... CREATE ROLE replication WITH REPLICATION PASSWORD ... GRANT EXECUTE ON FUNCTION pg_promote TO replication;";
+
+    psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
+    CREATE ROLE replication WITH REPLICATION PASSWORD '$POSTGRES_REPLICATION_PASSWORD' LOGIN;
+    GRANT EXECUTE ON FUNCTION pg_promote TO replication;
+    EOSQL
+
+    echo "$dt - Replication role created";
+  primary_init_script.sh: |
+    #!/bin/bash
+    set -e
+
+    # This script assumes that the env-var $POSTGRES_MYAPP_PASSWORD contains the password of the custom user to create.
+    # You can add any env-var in your Kubegres resource config YAML.
+
+    #dt=$(date '+%d/%m/%Y %H:%M:%S');
+    #echo "$dt - Running init script the 1st time Primary PostgreSql container is created...";
+
+    #customDatabaseName="my_app"
+    #customUserName="my_username"
+
+    #echo "$dt - Running: psql -v ON_ERROR_STOP=1 --username $POSTGRES_USER --dbname $POSTGRES_DB ...";
+
+    #psql -v ON_ERROR_STOP=1 --username "$POSTGRES_USER" --dbname "$POSTGRES_DB" <<-EOSQL
+    #CREATE DATABASE $customDatabaseName;
+    #CREATE USER $customUserName WITH PASSWORD '$POSTGRES_MYAPP_PASSWORD';
+    #\connect $customDatabaseName;
+    #CREATE TABLE account(user_id serial PRIMARY KEY, username VARCHAR (50) NOT NULL);
+    #INSERT INTO account VALUES (1, 'username1');
+    #INSERT INTO account VALUES (2, 'username2');
+    #GRANT ALL PRIVILEGES ON DATABASE "$customDatabaseName" to $customUserName;
+    #GRANT ALL ON "account" to $customUserName;
+    #EOSQL
+
+    #echo "$dt - Init script is completed";
+  promote_replica_to_primary.sh: |
+    #!/bin/bash
+    set -e
+
+    dt=$(date '+%d/%m/%Y %H:%M:%S');
+    echo "$dt - Attempting to promote a Replica PostgreSql to Primary...";
+
+    standbyFilePath="$PGDATA/standby.signal"
+
+    if [ ! -f "$standbyFilePath" ]; then
+      echo "$dt - Skipping as this PostgreSql is already a Primary since the file '$standbyFilePath' does not exist."
+      exit 0
+    fi
+
+    promotionTriggerFilePath="$PGDATA/promote_replica_to_primary.log"
+
+    if [ -f "$promotionTriggerFilePath" ]; then
+      echo "$dt - Skipping as the promotion trigger file '$promotionTriggerFilePath' already exists"
+      exit 0
+    fi
+
+    echo "$dt - Promoting by creating the promotion trigger file: '$promotionTriggerFilePath'"
+    touch $promotionTriggerFilePath
+kind: ConfigMap
+metadata:
+  creationTimestamp: "2022-05-25T13:12:31Z"
+  name: base-kubegres-config
+  namespace: default
