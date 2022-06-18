@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # First install helm charts
 echo "Updating helm repos and installing charts"
-sh deploy-charts-cluster.sh
+sh deploy-charts-cluster.sh no-promstack
 
 echo "Launching pods"
 kubectl apply -f k8s/kubegres/base-kubegres-configy.yaml
