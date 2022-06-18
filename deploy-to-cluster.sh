@@ -7,7 +7,7 @@ echo "Launching pods"
 kubectl apply -f k8s/kubegres/base-kubegres-configy.yaml
 kubectl apply -f k8s/kubegres/custom-postgres-config.yaml
 sleep 5
-kubectl apply -f k8s/kubegres
+kubectl apply -f k8s/kubegres/kubegres.yml
 kubectl apply -f k8s/rabbitmq/cluster-operator.yml
 sleep 5
 kubectl apply -f k8s/rabbitmq/rabbitmq.yaml
