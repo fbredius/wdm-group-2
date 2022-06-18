@@ -41,7 +41,7 @@ DB_URL = 'postgresql+psycopg2://{user}:{pw}@{host}/{db}' \
 app.config['SQLALCHEMY_DATABASE_URI'] = DB_URL
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False  # silence the deprecation warning
 
-db = SQLAlchemy(app)
+db = SQLAlchemy(app, session_options={"expire_on_commit": False})
 
 PROMETHEUS_MULTIPROC_DIR = os.environ["PROMETHEUS_MULTIPROC_DIR"]
 # make sure the dir is clean
