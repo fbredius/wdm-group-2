@@ -4,6 +4,7 @@ metadata:
   name: order-service
   labels:
     app: order-service
+    type: app-service
 spec:
   type: ClusterIP
   selector:

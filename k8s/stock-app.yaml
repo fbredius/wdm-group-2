@@ -4,6 +4,7 @@ metadata:
   name: stock-service
   labels:
     app: stock-service
+    type: app-service
 spec:
   type: ClusterIP
   selector:

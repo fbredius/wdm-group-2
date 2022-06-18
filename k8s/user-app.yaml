@@ -4,6 +4,7 @@ metadata:
   name: payment-service
   labels:
     app: payment-service
+    type: app-service
 spec:
   type: ClusterIP
   selector:
