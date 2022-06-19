@@ -1,0 +1,14 @@
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: app-monitor
+  labels:
+    release: promstack
+spec:
+  selector:
+    matchLabels:
+      type: app-service
+  endpoints:
+    - targetPort: 5000
+      path: "/metrics"
+      interval: 5s
