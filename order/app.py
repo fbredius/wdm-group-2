@@ -46,7 +46,7 @@ db = SQLAlchemy(app, session_options={"expire_on_commit": False})
 PROMETHEUS_MULTIPROC_DIR = os.environ["PROMETHEUS_MULTIPROC_DIR"]
 # make sure the dir is clean
 shutil.rmtree(PROMETHEUS_MULTIPROC_DIR, ignore_errors=True)
-os.makedirs(PROMETHEUS_MULTIPROC_DIR)
+os.makedirs(PROMETHEUS_MULTIPROC_DIR, exist_ok=True)
 
 registry = CollectorRegistry()
 multiprocess.MultiProcessCollector(registry)

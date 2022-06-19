@@ -27,7 +27,8 @@ kubectl apply -f k8s/
 echo "Waiting for services"
 kubectl wait --for=condition=available deployment -l type=app-deployment
 
-echo "Ingress information (including endpoint IP)"
-kubectl --namespace default get services -o wide nginx-ingress-nginx-controller
-echo "Pods launched, cluster ready"
-
+echo "Shopping cart endpoint:"
+echo "http://$(kubectl get ingress app-ingress-service --output jsonpath='{.status.loadBalancer.ingress[0].ip}')"
+echo "Pods launched, cluster ready (Some postgres instances might not have started yet, please wait until they are done, 3 instances per service should be running)"
+echo "kubectl get pod | grep postgres"
+kubectl get pod | grep postgres
