@@ -1,8 +1,8 @@
 #!/usr/bin/env python
-import uuid
 import asyncio
-
+import uuid
 from typing import MutableMapping
+
 from aio_pika import Message, connect
 from aio_pika.abc import (
     AbstractChannel, AbstractConnection, AbstractIncomingMessage, AbstractQueue, DeliveryMode,
@@ -98,7 +98,7 @@ class Producer:
         future = self.loop.create_future()
         self.futures[correlation_id] = future
 
-        await self.channel.default_exchange.publish(
+        asyncio.ensure_future(self.channel.default_exchange.publish(
             Message(
                 body=body.encode(),
                 correlation_id=correlation_id,
@@ -107,7 +107,7 @@ class Producer:
                 type=task
             ),
             routing_key=self.queue
-        )
+        ))
 
         # If an reply is expected, wait till the Future is ready
         if reply:

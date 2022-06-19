@@ -51,14 +51,17 @@ os.makedirs(PROMETHEUS_MULTIPROC_DIR)
 registry = CollectorRegistry()
 multiprocess.MultiProcessCollector(registry)
 
-
 create_order_metric = Histogram("create_order", "Histogram of /create/<user_id> endpoint")
-remove_order_metric = Histogram("remove_order", "Histogram of /remove<order_id>")
+remove_order_metric = Histogram("remove_order", "Histogram of /remove/<order_id>")
+remove_item_metric = Histogram("remove_item", "Histogram of '/removeItem/<order_id>/<item_id>'")
 add_item_metric = Histogram("add_item", "Histogram of /removeItem/<order_id>/<item_id>")
 find_order_metric = Histogram("find_order", "Histogram of /find/<order_id>")
 checkout_metric = Histogram("checkout", "Histogram of /checkout/<order_id>")
 handle_rollback_metric = Histogram("handle_rollback", "Histogram of handle rollback")
-
+check_producer_metric = Histogram("check_producer", "Histogram of check producer func")
+publish_checkout_metric = Histogram("publish_checkout", "Histogram of publish checkout")
+publish_stock_metric = Histogram("publish_stock", "Histogram of publish checkout")
+publish_payment_metric = Histogram("publish_payment", "Histogram of publish checkout")
 
 # Create connection and producer objects.
 connection = OrderConnection()
@@ -201,7 +204,7 @@ async def add_item(order_id, item_id):
 
 
 @app.delete('/removeItem/<order_id>/<item_id>')
-@time(remove_order_metric)
+@time(remove_item_metric)
 async def remove_item(order_id, item_id):
     """
     Removes the given item, by ID, from the given order, by ID.
@@ -240,6 +243,17 @@ async def find_order(order_id):
     return Order.query.get_or_404(order_id).as_dict()
 
 
+@time(publish_checkout_metric)
+async def publish_checkout(payment_body, stock_body):
+    await check_producer()
+
+    payment_response, stock_response = await asyncio.gather(payment_producer.publish(payment_body, "pay", reply=True),
+                                                            stock_producer.publish(stock_body, "subtractItems",
+                                                                                   reply=True)
+                                                            )
+    return payment_response, stock_response
+
+
 @app.post('/checkout/<order_id>')
 @time(checkout_metric)
 async def checkout(order_id):
@@ -268,12 +282,7 @@ async def checkout(order_id):
     payment_body = json.dumps({"user_id": order.user_id, "order_id": order.id, "total_cost": order.total_cost})
 
     # Send the payment and stock task to the respective queues simultaneously
-
-    await check_producer()
-
-    payment_response, stock_response = await asyncio.gather(payment_producer.publish(payment_body, "pay", reply=True),
-                                                            stock_producer.publish(stock_body, "subtractItems",
-                                                                                   reply=True))
+    payment_response, stock_response = await publish_checkout(payment_body, stock_body)
 
     # If one of the tasks fails, start a rollback
     logger.debug(f"order id: {order_id}, payment response: {payment_response}")
@@ -366,6 +375,8 @@ async def metrics():
     logger.debug(f"Metrics, returning: {data}")
     return Response(data, mimetype=CONTENT_TYPE_LATEST)
 
+
+@time(check_producer_metric)
 async def check_producer():
     """
     Check producer if ready, otherwise initialize.

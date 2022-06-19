@@ -18,11 +18,11 @@ spec:
           imagePullPolicy: Always
           resources:
             limits:
-              memory: "1Gi"
-              cpu: "1"
+              memory: "250Mi"
+              cpu: "750m"
             requests:
-              memory: "1Gi"
-              cpu: "1"
+              memory: "100Mi"
+              cpu: "250m"
           command: [ "python" ]
           args: [ "consumer.py" ]
           env:
@@ -51,5 +51,5 @@ spec:
     kind: Deployment
     name: payment-queue-deployment
   minReplicas: 1
-  maxReplicas: 3
-  targetCPUUtilizationPercentage: 70
+  maxReplicas: 15
+  targetCPUUtilizationPercentage: 60

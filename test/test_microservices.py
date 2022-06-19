@@ -1,4 +1,5 @@
 import asyncio
+import time
 import unittest
 
 import utils as tu
@@ -193,10 +194,9 @@ class TestMicroservices(unittest.TestCase):
 
         loop = asyncio.get_event_loop()
         loop.run_until_complete(async_order([order_id, order_id2]))
-
         stock: int = tu.find_item(item_id1)['stock']
         self.assertEqual(stock, 0)
-
+        time.sleep(1)
         # Only one order should go through, so one of the users should be refunded
         credit_after_payment: int = tu.find_user(user_id)['credit']
         credit_after_payment2: int = tu.find_user(user_id2)['credit']

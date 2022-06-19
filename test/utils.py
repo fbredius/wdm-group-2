@@ -1,9 +1,7 @@
 import requests
 
-ORDER_URL = STOCK_URL = PAYMENT_URL = "http://127.0.0.1:8000"  # localhost
-
-
-# ORDER_URL = STOCK_URL = PAYMENT_URL = "http://34.147.9.239"  # kubernetes GCP cluster
+# ORDER_URL = STOCK_URL = PAYMENT_URL = "http://127.0.0.1:8000"  # localhost
+ORDER_URL = STOCK_URL = PAYMENT_URL = "http://34.147.9.239"  # kubernetes GCP cluster
 
 
 def clear_tables():

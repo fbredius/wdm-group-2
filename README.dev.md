@@ -161,9 +161,12 @@ ingress to the cluster.
     - login with uname: admin, password: prom-operator
 
 - Accessing Rabbitmq:
-    - `kubectl port-forward kubectl port-forward service/rabbitmqcluster 15672:15672`
+    - `kubectl port-forward service/rabbitmq 15672:15672`
     - go to localhost:15672
     - login with guest/guest
+
+kubectl apply
+--filename https://raw.githubusercontent.com/rabbitmq/cluster-operator/main/observability/prometheus/monitors/rabbitmq-servicemonitor.yml
 
 ## Known issues
 

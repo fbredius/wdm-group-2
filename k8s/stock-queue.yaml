@@ -18,11 +18,11 @@ spec:
           imagePullPolicy: Always
           resources:
             limits:
-              memory: "1Gi"
-              cpu: "1"
+              memory: "250Mi"
+              cpu: "550m"
             requests:
-              memory: "1Gi"
-              cpu: "1"
+              memory: "150Mi"
+              cpu: "300m"
           command: [ "python" ]
           args: [ "consumer.py" ]
           env:
@@ -53,5 +53,5 @@ spec:
     kind: Deployment
     name: stock-queue-deployment
   minReplicas: 1
-  maxReplicas: 3
-  targetCPUUtilizationPercentage: 70
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 60

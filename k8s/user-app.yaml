@@ -36,11 +36,11 @@ spec:
           imagePullPolicy: Always
           resources:
             limits:
-              memory: "1Gi"
-              cpu: "1"
+              memory: "350Mi"
+              cpu: "500m"
             requests:
-              memory: "1Gi"
-              cpu: "1"
+              memory: "250Mi"
+              cpu: "200m"
           command: [ "uvicorn" ]
           args: [ "app:app", "--host", "0.0.0.0", "--port", "5000" ]
           ports:
@@ -60,6 +60,8 @@ spec:
               value: "user-postgres-service-replica"
             - name: PROMETHEUS_MULTIPROC_DIR
               value: "/tmp/prometheus"
+            - name: LOG_LEVEL
+              value: "WARNING"
 ---
 apiVersion: autoscaling/v1
 kind: HorizontalPodAutoscaler
@@ -71,5 +73,5 @@ spec:
     kind: Deployment
     name: user-deployment
   minReplicas: 1
-  maxReplicas: 5
-  targetCPUUtilizationPercentage: 50
+  maxReplicas: 15
+  targetCPUUtilizationPercentage: 80
