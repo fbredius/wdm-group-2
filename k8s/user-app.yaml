@@ -42,7 +42,7 @@ spec:
               memory: "250Mi"
               cpu: "200m"
           command: [ "uvicorn" ]
-          args: [ "app:app", "--host", "0.0.0.0", "--port", "5000" ]
+          args: [ "app:app", "--host", "0.0.0.0", "--port", "5000", "--workers", "2" ]
           ports:
             - containerPort: 5000
           env:
@@ -72,6 +72,6 @@ spec:
     apiVersion: apps/v1
     kind: Deployment
     name: user-deployment
-  minReplicas: 1
+  minReplicas: 2
   maxReplicas: 15
   targetCPUUtilizationPercentage: 80
