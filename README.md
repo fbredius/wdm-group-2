@@ -86,4 +86,5 @@ and RabbitMQ to communicate with each other in an event-driven manner.
 
 ### Presentation
 
-For more information regarding the project, see the presentation document in the `assets` folder.
+For more information regarding the project, see the presentation document in
+the [`assets` folder](./assets/WDM-2-Presentation.pdf).
